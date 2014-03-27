@@ -17,7 +17,29 @@ def build_param(text):
     return param
 
 
-def parse(text):
+def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text))
-    return response
+    if not response.ok:
+        return None
+    return AnalyzedResult(response.json())
 
+
+class AnalyzedResult():
+    def __init__(self, json):
+        if not isinstance(json, list):
+            raise TypeError
+        self.json = json
+
+    def has_pronoun(self):
+        return self.has_x_pos_tag('r')
+
+    def has_verb(self):
+        return self.has_x_pos_tag('v')
+
+    def has_x_pos_tag(self, x):
+        for p in self.json:
+            for s in p:
+                for w in s:
+                    if w['pos'] == x:
+                        return True
+        return False
