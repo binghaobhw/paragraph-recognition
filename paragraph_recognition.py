@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 import requests
+import pymongo
+import sys
+from data_access import Session, Question
 
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
 API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
@@ -43,3 +46,18 @@ class AnalyzedResult():
                     if w['pos'] == x:
                         return True
         return False
+
+
+def save_analyzed_result():
+    con = pymongo.Connection('127.0.0.1', 27017)
+    db = con.test
+    results = db.results
+    r = Session.query(Question).filter_by(question_id=582484996947666685).all()
+
+
+def main():
+    save_analyzed_result()
+
+
+if __name__ == '__main__':
+    main()
