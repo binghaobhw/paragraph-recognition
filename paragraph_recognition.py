@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
+import hashlib
+import json
+
 import requests
-import pymongo
-import sys
-from data_access import Session, Question
+
+from data_access import (Session,
+                         Paragraph,
+                         LtpResult)
+
 
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
 API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
@@ -24,14 +29,14 @@ def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text))
     if not response.ok:
         return None
-    return AnalyzedResult(response.json())
+    return response.json()
 
 
 class AnalyzedResult():
-    def __init__(self, json):
-        if not isinstance(json, list):
+    def __init__(self, json_string):
+        if not isinstance(json_string, list):
             raise TypeError
-        self.json = json
+        self.json_string = json_string
 
     def has_pronoun(self):
         return self.has_x_pos_tag('r')
@@ -40,7 +45,7 @@ class AnalyzedResult():
         return self.has_x_pos_tag('v')
 
     def has_x_pos_tag(self, x):
-        for p in self.json:
+        for p in self.json_string:
             for s in p:
                 for w in s:
                     if w['pos'] == x:
@@ -49,10 +54,19 @@ class AnalyzedResult():
 
 
 def save_analyzed_result():
-    con = pymongo.Connection('127.0.0.1', 27017)
-    db = con.test
-    results = db.results
-    r = Session.query(Question).filter_by(question_id=582484996947666685).all()
+    r = Session.query(Paragraph).filter(
+        Paragraph.is_deleted == 0).order_by(Paragraph.paragraph_id).limit(10) \
+        .all()
+    for p in r:
+        question = p.question.title
+        analyzed_result = analyze(question)
+        if analyzed_result is None:
+            return
+        ltp_result = LtpResult(hashlib.md5(question.encode('utf-8'))
+                               .hexdigest(),  json.dumps(analyzed_result))
+        Session.add(ltp_result)
+
+    Session.commit()
 
 
 def main():

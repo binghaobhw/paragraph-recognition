@@ -3,8 +3,8 @@ import time
 from Queue import Queue
 import requests
 import re
-from threading import Thread
-from threading import Event
+from threading import (Thread,
+                       Event)
 import logging
 import logging.config
 from urllib import quote
@@ -12,13 +12,13 @@ from os.path import isfile
 from bs4 import BeautifulSoup
 import random
 
-from data_access import Session
-from data_access import Question
-from data_access import Paragraph
-from data_access import Reply
-from unicode_csv import to_unicode
-from unicode_csv import read_csv
-from unicode_csv import write_csv
+from data_access import (Session,
+                         Question,
+                         Paragraph,
+                         Reply)
+from unicode_csv import (to_unicode,
+                         read_csv,
+                         write_csv)
 from log_config import LOGGING
 
 logger = logging.getLogger('extractor')
@@ -342,7 +342,7 @@ class ParagraphExtractor(Extractor):
                 paragraph = Paragraph(question_id)
                 reply_type = 1
                 for reply in reply_list:
-                    paragraph.reply.append(Reply(reply_type, reply))
+                    paragraph.replies.append(Reply(reply_type, reply))
                     reply_type = 0 if reply_type == 1 else 1
                 Session.add(paragraph)
                 logger.info('start to insert paragraph(%d replies)',

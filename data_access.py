@@ -10,11 +10,12 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import scoped_session
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.mysql import BIGINT
-from sqlalchemy.dialects.mysql import DATETIME
-from sqlalchemy.dialects.mysql import TINYINT
-from sqlalchemy.dialects.mysql import INTEGER
-from sqlalchemy.dialects.mysql import VARCHAR
+from sqlalchemy.dialects.mysql import (BIGINT,
+                                       CHAR,
+                                       DATETIME,
+                                       TINYINT,
+                                       INTEGER,
+                                       VARCHAR)
 
 engine = create_engine(
     'mysql://root:wangbinghao@127.0.0.1:3306/test?charset=utf8',
@@ -59,7 +60,7 @@ class Paragraph(Base):
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
 
-    reply = relationship('Reply', order_by='Reply.reply_id')
+    replies = relationship('Reply', order_by='Reply.reply_id')
     question = relationship('Question')
 
     def __init__(self, question_id):
@@ -67,7 +68,7 @@ class Paragraph(Base):
 
     def __repr__(self):
         return "<Paragraph(paragraph_id='%s', question_id='%s', reply='%s')>" \
-               % (self.paragraph_id, self.question_id, self.reply)
+               % (self.paragraph_id, self.question_id, self.replies)
 
     def __str__(self):
         return self.__repr__()
@@ -94,7 +95,26 @@ class Reply(Base):
                "content='%s')>" \
                % (self.reply_id, self.paragraph_id, self.type, self.content)
 
-
     def __str__(self):
         return self.__repr__()
 
+
+class LtpResult(Base):
+    __tablename__ = 'ltp_result'
+
+    md5 = Column(CHAR(32), primary_key=True)
+    analyzed_result = Column(VARCHAR(1000))
+    created_time = Column(DATETIME, default=func.now())
+    modified_time = Column(DATETIME, default=func.now())
+    is_deleted = Column(TINYINT, default=0)
+
+    def __init__(self, md5, analyzed_result):
+        self.md5 = md5
+        self.analyzed_result = analyzed_result
+
+    def __repr__(self):
+        return "<LtpResult(md5='%s', analyzed_result='%s')>" \
+               % (self.md5, self.analyzed_result)
+
+    def __str__(self):
+        return self.__repr__()
