@@ -18,7 +18,7 @@ from sqlalchemy.dialects.mysql import VARCHAR
 
 engine = create_engine(
     'mysql://root:wangbinghao@127.0.0.1:3306/test?charset=utf8',
-    encoding='utf-8')
+    encoding='utf-8', pool_size=10)
 
 session_factory = sessionmaker(bind=engine)
 Session = scoped_session(session_factory)

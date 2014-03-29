@@ -359,8 +359,8 @@ class ParagraphExtractor(Extractor):
             page = self.get_page(next_page_link, delay=True)
         logger.info('finished extracting paragraph in %s', target)
 
-THREAD_NUM = 5
-QUEUE_NUM = 5
+THREAD_NUM = 7
+QUEUE_SIZE = 3
 
 
 def main():
@@ -370,7 +370,7 @@ def main():
     category_extractor = CategoryExtractor('category_extractor',
                                            None, exit_signal)
 
-    url_queue = Queue(QUEUE_NUM)
+    url_queue = Queue(QUEUE_SIZE)
     category_page_extractor = CategoryPageExtractor('category_page_extractor',
                                                     url_queue, exit_signal)
     # extractors = [category_page_extractor]
