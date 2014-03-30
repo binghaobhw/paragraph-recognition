@@ -1,41 +1,42 @@
 # coding:utf-8
 LOG_HOME = 'log'
+LOG_PROJECT_NAME = 'paragraph-recognition'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': True,
     'formatters': {
         'verbose': {
             'format': '%(levelname)s %(asctime)s %(module)s %(process)d %('
-                      'threadName)s %(message)s'
+                      'threadName)s %(funcName)s: %(message)s'
         }
     },
     'handlers': {
-        'file': {
+        'info': {
             'level': 'DEBUG',
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'formatter': 'verbose',
-            'filename': '%s/extractor.log' % LOG_HOME,
+            'filename': '%s/info.log' % LOG_HOME,
             'when': 'midnight',
             'interval': 1
         },
-        'error_file': {
+        'other': {
             'level': 'WARNING',
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'formatter': 'verbose',
-            'filename': '%s/error.log' % LOG_HOME,
+            'filename': '%s/other.log' % LOG_HOME,
             'when': 'midnight',
             'interval': 1
         }
     },
     'loggers': {
-        'extractor': {
-            'handlers': ['file', 'error_file'],
+        LOG_PROJECT_NAME: {
+            'handlers': ['info'],
             'propagate': False,
             'level': 'INFO'
         }
     },
     'root': {
         'level': 'WARNING',
-        'handlers': ['error_file']
+        'handlers': ['other']
     }
 }
