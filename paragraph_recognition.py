@@ -32,7 +32,7 @@ def build_param(text):
 def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        raise RuntimeError('bad response code %s' % response.status_code)
+        raise RuntimeError('bad response code %s, %s' % (response.status_code, response.url))
     return response.json()
 
 
@@ -83,7 +83,7 @@ def async_save_analyzed_result():
                 logger.error('fail to insert %s', title, exc_info=True)
                 return
             logger.info('finished inserting %s', md5_string)
-            sleep(0.5)
+            sleep(1)
 
 
 def md5(text):

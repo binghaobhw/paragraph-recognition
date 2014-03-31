@@ -32,7 +32,7 @@ class Question(Base):
 
     question_id = Column(BIGINT(unsigned=True), primary_key=True)
     category_id = Column(INTEGER(unsigned=True))
-    title = Column(VARCHAR(200))
+    title = Column(VARCHAR(1000))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
@@ -81,7 +81,7 @@ class Reply(Base):
     paragraph_id = Column(BIGINT(unsigned=True),
                           ForeignKey('zhidao_paragraph.paragraph_id'))
     type = Column(INTEGER)
-    content = Column(VARCHAR(200))
+    content = Column(VARCHAR(10000))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
@@ -103,7 +103,7 @@ class LtpResult(Base):
     __tablename__ = 'ltp_result'
 
     md5 = Column(CHAR(32), primary_key=True)
-    analyzed_result = Column(VARCHAR(1000))
+    analyzed_result = Column(VARCHAR(10000))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
