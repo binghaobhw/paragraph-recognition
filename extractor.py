@@ -19,9 +19,9 @@ from data_access import (Session,
 from unicode_csv import (to_unicode,
                          read_csv,
                          write_csv)
-from log_config import LOGGING
+from log_config import LOGGING, LOG_PROJECT_NAME
 
-logger = logging.getLogger('extractor')
+logger = logging.getLogger(LOG_PROJECT_NAME + '.extractor')
 
 TOP_CATEGORY_CSV = 'top-category.csv'
 SUB_CATEGORY_CSV = 'sub-category.csv'
@@ -331,22 +331,26 @@ class ParagraphExtractor(Extractor):
                 # answer only, skip
                 if line_content_div.find('dt', 'ask f-12 grid') is None:
                     continue
-                # get reply list
-                reply_list = []
-                for pre in line_content_div.find_all('pre'):
-                    reply = to_unicode(pre.string)
-                    if reply is None:
-                        reply = to_unicode(pre.strings)
-                    reply_list.append(reply)
-                # save paragraph and reply list
+                # generate paragraph
                 paragraph = Paragraph(question_id)
-                reply_type = 1
-                for reply in reply_list:
-                    paragraph.replies.append(Reply(reply_type, reply))
-                    reply_type = 0 if reply_type == 1 else 1
+                # generate reply
+                a_content = line_content_div.find('pre', {'accuse': 'aContent'})
+                if a_content is None:
+                    logger.info('can not find aContent')
+                    continue
+                reply = to_unicode(a_content.strings)
+                paragraph.replies.append(Reply(1, reply))
+                for pre in line_content_div.find_all('pre'):
+                    pre_accuse = pre.get('accuse', 'no')
+                    if pre_accuse == 'aRA':
+                        reply = to_unicode(pre.strings)
+                        paragraph.replies.append(Reply(1, reply))
+                    elif pre_accuse == 'qRA':
+                        reply = to_unicode(pre.strings)
+                        paragraph.replies.append(Reply(0, reply))
                 Session.add(paragraph)
                 logger.info('start to insert paragraph(%d replies)',
-                            len(reply_list))
+                            len(paragraph.replies))
                 try:
                     Session.commit()
                 except:
