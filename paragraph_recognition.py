@@ -30,9 +30,9 @@ def build_param(text):
 
 
 def analyze(text):
-    response = requests.get(LTP_URL, params=build_param(text), timeout=15)
+    response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        return None
+        raise RuntimeError('bad response code %s' % response.status_code)
     return response.json()
 
 
@@ -68,21 +68,34 @@ def async_save_analyzed_result():
 
     for question in questions:
         title = question.title
-        try:
-            save_analyzed_result(title)
-        except:
-            logger.error('fail to insert %s', title, exc_info=True)
-            return
-        sleep(0.5)
+        md5_string = md5(title)
+        r = get_analyzed_result(md5_string)
+        if r is None:
+            try:
+                analyzed_result = analyze(title)
+            except:
+                logger.error('fail to analyze %s', title, exc_info=True)
+                return
+            logger.info('start to insert %s', md5_string)
+            try:
+                save_analyzed_result(md5_string, analyzed_result)
+            except:
+                logger.error('fail to insert %s', title, exc_info=True)
+                return
+            logger.info('finished inserting %s', md5_string)
+            sleep(0.5)
 
 
-def save_analyzed_result(text):
-    analyzed_result = analyze(text)
-    if analyzed_result is None:
-        return
-    ltp_result = LtpResult(hashlib.md5(text.encode('utf-8'))
-                           .hexdigest(), json.dumps(analyzed_result,
-                                                    ensure_ascii=False))
+def md5(text):
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+
+def get_analyzed_result(md5):
+    return Session.query(LtpResult).filter_by(md5=md5).first()
+
+
+def save_analyzed_result(md5_string, analyzed_result):
+    ltp_result = LtpResult(md5_string, json.dumps(analyzed_result, ensure_ascii=False))
     Session.add(ltp_result)
     Session.commit()
 
