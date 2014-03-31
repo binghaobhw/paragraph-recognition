@@ -336,7 +336,7 @@ class ParagraphExtractor(Extractor):
                 # generate reply
                 a_content = line_content_div.find('pre', {'accuse': 'aContent'})
                 if a_content is None:
-                    logger.info('can not find aContent')
+                    logger.error('can not find aContent, structure changed')
                     continue
                 reply = to_unicode(a_content.strings)
                 paragraph.replies.append(Reply(1, reply))
