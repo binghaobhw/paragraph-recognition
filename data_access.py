@@ -103,18 +103,18 @@ class LtpResult(Base):
     __tablename__ = 'ltp_result'
 
     md5 = Column(CHAR(32), primary_key=True)
-    analyzed_result = Column(VARCHAR(10000))
+    json_text = Column(VARCHAR(10000))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
 
-    def __init__(self, md5, analyzed_result):
+    def __init__(self, md5, json_text):
         self.md5 = md5
-        self.analyzed_result = analyzed_result
+        self.json_text = json_text
 
     def __repr__(self):
-        return "<LtpResult(md5='%s', analyzed_result='%s')>" \
-               % (self.md5, self.analyzed_result)
+        return "<LtpResult(md5='%s', json_text='%s')>" \
+               % (self.md5, self.json_text)
 
     def __str__(self):
         return self.__repr__()

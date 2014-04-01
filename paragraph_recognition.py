@@ -37,12 +37,20 @@ def analyze(text):
 
 
 class AnalyzedResult():
-    def __init__(self, json_string):
-        if not isinstance(json_string, unicode):
-            raise TypeError('expecting type is unicode but %s' % json_string
-                            .__class__)
-        self.json = json.loads(json_string)
+    def __init__(self, result):
+        if isinstance(result, unicode):
+            self.json = json.loads(result)
+        elif isinstance(result, list):
+            self.json = json
+        else:
+            raise TypeError('expecting type is unicode or json, but %s'
+                            % result.__class__)
 
+    def has_third_person_pronoun(self):
+        return True
+
+    def has_cue_words(self):
+        return True
     def has_pronoun(self):
         return self.has_x_pos_tag('r')
 
@@ -68,36 +76,78 @@ def async_save_analyzed_result():
 
     for question in questions:
         title = question.title
-        md5_string = md5(title)
-        r = get_analyzed_result(md5_string)
-        if r is None:
-            try:
-                analyzed_result = analyze(title)
-            except:
-                logger.error('fail to analyze %s', title, exc_info=True)
-                return
-            logger.info('start to insert %s', md5_string)
-            try:
-                save_analyzed_result(md5_string, analyzed_result)
-            except:
-                logger.error('fail to insert %s', title, exc_info=True)
-                return
-            logger.info('finished inserting %s', md5_string)
-            sleep(1)
+        try:
+            r = get_analyzed_result(title)
+        except:
+            logger.error('fail to analyze %s', title, exc_info=True)
+            return
 
 
 def md5(text):
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 
-def get_analyzed_result(md5):
-    return Session.query(LtpResult).filter_by(md5=md5).first()
+def get_analyzed_result(question_text):
+    md5_string = md5(question_text)
+    ltp_result = Session.query(LtpResult).filter_by(md5=md5_string).first()
+    if ltp_result is not None:
+        result_json = json.loads(ltp_result.analyzed_result)
+    else:
+        result_json = analyze(question_text)
+        save_analyzed_result(md5_string, result_json)
+    return result_json
 
 
-def save_analyzed_result(md5_string, analyzed_result):
-    ltp_result = LtpResult(md5_string, json.dumps(analyzed_result, ensure_ascii=False))
+def save_analyzed_result(md5_string, result_json):
+    ltp_result = LtpResult(md5_string, json.dumps(result_json, ensure_ascii=False))
     Session.add(ltp_result)
-    Session.commit()
+    try:
+        Session.commit()
+    except:
+        Session.rollback()
+
+
+def generate_test_set():
+    pass
+
+def calculate_similarity(text, text_list):
+    return 1
+
+
+Q_Q_THRESHOLD = 1
+Q_A_THRESHOLD = 2
+
+def de_boni():
+    with open('test-set.txt', 'rb') as test_set:
+        with open('predicted-result.txt', 'wb') as result_file:
+            history_questions = []
+            previous_answer = None
+            for line in test_set:
+                if line == '':
+                    continue
+                elif line.startswith('A'):
+                    previous_answer = line.split(':', 1)[1]
+                    continue
+                [prefix, question_text] = line.split(':', 1)
+                try:
+                    current_question = get_analyzed_result(question_text)
+                except:
+                    pass
+                if current_question.has_third_person_pronoun() or current_question.has_cue_words() or calculate_similarity(current_question, history_questions) > Q_Q_THRESHOLD or calculate_similarity(current_question, [previous_answer]) > Q_A_THRESHOLD:
+                    follow_up = True
+                else:
+                    follow_up = False
+                    history_questions = []
+                result_file.write('%s:%s\n' % (prefix, 'F' if follow_up else 'N'))
+                history_questions.append(current_question)
+
+
+
+
+
+
+
+
 
 
 def main():
