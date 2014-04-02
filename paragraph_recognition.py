@@ -32,7 +32,8 @@ def build_param(text):
 def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        raise RuntimeError('bad response code %s, %s' % (response.status_code, response.url))
+        raise RuntimeError(
+            'bad response code %s, %s' % (response.status_code, response.url))
     return response.json()
 
 
@@ -47,10 +48,11 @@ class AnalyzedResult():
                             % result.__class__)
 
     def has_third_person_pronoun(self):
-        return True
+        return self.has_pronoun()
 
     def has_cue_words(self):
         return True
+
     def has_pronoun(self):
         return self.has_x_pos_tag('r')
 
@@ -69,9 +71,9 @@ class AnalyzedResult():
 def async_save_analyzed_result():
     logger = logging.getLogger(LOG_PROJECT_NAME + '.async_save')
     subquery = Session.query(Paragraph.question_id.distinct().
-                             label('question_id'))\
+                             label('question_id')) \
         .filter_by(is_deleted=0).subquery()
-    questions = Session.query(Question)\
+    questions = Session.query(Question) \
         .join(subquery, Question.question_id == subquery.c.question_id)
 
     for question in questions:
@@ -99,7 +101,8 @@ def get_analyzed_result(question_text):
 
 
 def save_analyzed_result(md5_string, result_json):
-    ltp_result = LtpResult(md5_string, json.dumps(result_json, ensure_ascii=False))
+    ltp_result = LtpResult(md5_string,
+                           json.dumps(result_json, ensure_ascii=False))
     Session.add(ltp_result)
     try:
         Session.commit()
@@ -110,12 +113,14 @@ def save_analyzed_result(md5_string, result_json):
 def generate_test_set():
     pass
 
+
 def calculate_similarity(text, text_list):
     return 1
 
 
 Q_Q_THRESHOLD = 1
 Q_A_THRESHOLD = 2
+
 
 def de_boni():
     with open('test-set.txt', 'rb') as test_set:
@@ -132,22 +137,22 @@ def de_boni():
                 try:
                     current_question = get_analyzed_result(question_text)
                 except:
-                    pass
-                if current_question.has_third_person_pronoun() or current_question.has_cue_words() or calculate_similarity(current_question, history_questions) > Q_Q_THRESHOLD or calculate_similarity(current_question, [previous_answer]) > Q_A_THRESHOLD:
+                    return
+                if current_question.has_third_person_pronoun() \
+                        or current_question.has_cue_words() \
+                        or calculate_similarity(current_question,
+                                                history_questions) \
+                                > Q_Q_THRESHOLD \
+                        or calculate_similarity(current_question,
+                                                [previous_answer]) \
+                                > Q_A_THRESHOLD:
                     follow_up = True
                 else:
                     follow_up = False
                     history_questions = []
-                result_file.write('%s:%s\n' % (prefix, 'F' if follow_up else 'N'))
+                result_file.write(
+                    '%s:%s\n' % (prefix, 'F' if follow_up else 'N'))
                 history_questions.append(current_question)
-
-
-
-
-
-
-
-
 
 
 def main():
