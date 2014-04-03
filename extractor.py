@@ -11,7 +11,8 @@ from urllib import quote
 from os.path import isfile
 from bs4 import BeautifulSoup
 import random
-
+import getopt
+import sys
 from data_access import (Session,
                          Question,
                          Paragraph,
@@ -35,6 +36,8 @@ HEADERS = {
 'Referer': 'https://www.google.com.hk/',
 'User-agent': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'}
 TIMEOUT = 5
+thread_num = 8
+sleep_time = 500
 browser = requests.session()
 
 
@@ -268,7 +271,7 @@ def is_visited(question_id):
 
 
 def sleep():
-    second = random.randint(1, 600)
+    second = random.randint(1, sleep_time)
     logger.info('start to sleep %d', second)
     time.sleep(second)
     logger.info('wake up')
@@ -363,11 +366,40 @@ class ParagraphExtractor(Extractor):
             page = self.get_page(next_page_link, delay=True)
         logger.info('finished extracting paragraph in %s', target)
 
-THREAD_NUM = 7
+
 QUEUE_SIZE = 3
 
 
-def main():
+def show_usage():
+    print 'python extractor.py [-h | --help] [-t | --thread] ' \
+          '[-s | --sleep]\n default: 8 threads, 500 seconds sleep time'
+
+
+
+def main(argv):
+    try:
+        opts, args = getopt.getopt(argv, 'ht:s:', ['help', 'thread=', 'sleep='])
+    except getopt.GetoptError:
+        show_usage()
+        return
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            show_usage()
+            return
+        elif opt in ('-t', '--thread'):
+            if arg.isdigit():
+                thread_num = int(arg)
+            else:
+                print '{} is not int'.format(arg)
+                return
+        elif opt in ('-s', '--sleep'):
+            if arg.isdigit():
+                sleep_time = int(arg)
+            else:
+                print '{} is not int'.format(arg)
+                return
+
+    print '{} threads, {} sleep time\n'.format(thread_num, sleep_time)
     logging.config.dictConfig(LOGGING)
 
     exit_signal = Event()
@@ -377,11 +409,10 @@ def main():
     url_queue = Queue(QUEUE_SIZE)
     category_page_extractor = CategoryPageExtractor('category_page_extractor',
                                                     url_queue, exit_signal)
-    # extractors = [category_page_extractor]
     search_page_extractor = SearchPageExtractor('search_page_extractor',
                                                 url_queue, exit_signal)
     extractors = [category_page_extractor, search_page_extractor]
-    for i in range(0, THREAD_NUM):
+    for i in range(0, thread_num):
         extractors.append(ParagraphExtractor('paragraph_extractor_%d' % i,
                                              url_queue, exit_signal))
     logger.info('start all')
@@ -404,4 +435,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
