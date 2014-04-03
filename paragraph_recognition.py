@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+import codecs
 import hashlib
 import json
 import logging
@@ -22,6 +23,25 @@ param = {'api_key': API_KEY,
          'format': FORMAT,
          'pattern': PATTERN,
          'text': None}
+
+
+SYNONYM_DICT = {}
+with open('synonym.txt', 'rb') as f:
+    for line in f:
+        synonym_line = line.split(' ')
+        code = synonym_line.pop(0)
+        for word in synonym_line:
+            if word in SYNONYM_DICT:
+                SYNONYM_DICT[word].append(code)
+            else:
+                SYNONYM_DICT[word] = [code]
+
+
+def is_synonymous(str1, str2):
+    for line in SYNONYM_DICT:
+        if str1 in line and str2 in line:
+            return True
+    return False
 
 
 def build_param(text):
@@ -66,6 +86,14 @@ class AnalyzedResult():
                     if w['pos'] == x:
                         return True
         return False
+
+    def words(self):
+        for p in self.json:
+            for s in p:
+                for w in s:
+                    yield w
+
+
 
 
 def async_save_analyzed_result():
@@ -115,6 +143,20 @@ def generate_test_set():
 
 
 def calculate_similarity(text, text_list):
+    for text_to_compare in text_list:
+        # sentence similarity
+        score = 0
+        for word in text.words():
+            # get word similarity max
+            for word_to_compare in text_to_compare.words():
+                if is_synonymous(word, word_to_compare):
+                    score += 1
+                    break
+
+
+
+
+
     return 1
 
 
@@ -156,8 +198,9 @@ def de_boni():
 
 
 def main():
-    logging.config.dictConfig(LOGGING)
-    async_save_analyzed_result()
+    pass
+    # logging.config.dictConfig(LOGGING)
+    # async_save_analyzed_result()
     # r = Session.query(LtpResult).all()
     # for ltp_result in r:
     #     a = AnalyzedResult(ltp_result.analyzed_result)
@@ -170,6 +213,7 @@ def main():
     #                            .hexdigest()).first()
     # a = AnalyzedResult(ltp_result.analyzed_result)
     # a.has_verb()
+
 
 
 if __name__ == '__main__':
