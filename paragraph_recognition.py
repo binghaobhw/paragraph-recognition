@@ -37,6 +37,11 @@ with open('synonym.txt', 'rb') as f:
                 SYNONYM_DICT[word] = [code]
 
 
+STOP_WORD_DICT = {}
+with open('stop-word.txt', 'rb') as f:
+    for line in f:
+        pass
+
 def is_synonymous(str1, str2):
     for line in SYNONYM_DICT:
         if str1 in line and str2 in line:
@@ -87,13 +92,20 @@ class AnalyzedResult():
                         return True
         return False
 
-    def words(self):
+    def sentence(self):
         for p in self.json:
             for s in p:
-                for w in s:
-                    yield w
+                yield s
 
+    def words(self):
+        for s in self.sentence():
+            for w in s:
+                yield w
 
+    def stop_words(self):
+        for w in self.words():
+            if w in STOP_WORD_DICT:
+                yield w
 
 
 def async_save_analyzed_result():
@@ -146,17 +158,12 @@ def calculate_similarity(text, text_list):
     for text_to_compare in text_list:
         # sentence similarity
         score = 0
-        for word in text.words():
+        for word in text.stop_words():
             # get word similarity max
-            for word_to_compare in text_to_compare.words():
+            for word_to_compare in text_to_compare.stop_words():
                 if is_synonymous(word, word_to_compare):
                     score += 1
                     break
-
-
-
-
-
     return 1
 
 
@@ -198,21 +205,8 @@ def de_boni():
 
 
 def main():
-    pass
-    # logging.config.dictConfig(LOGGING)
-    # async_save_analyzed_result()
-    # r = Session.query(LtpResult).all()
-    # for ltp_result in r:
-    #     a = AnalyzedResult(ltp_result.analyzed_result)
-    #     pass
-    #
-    # q = Session.query(Question).filter_by(question_id=807911036005241572).first()
-    # question = q.title
-    # ltp_result = Session.query(LtpResult).filter_by(md5=hashlib.md5(question
-    #                                                             .encode('utf-8'))
-    #                            .hexdigest()).first()
-    # a = AnalyzedResult(ltp_result.analyzed_result)
-    # a.has_verb()
+    x = analyze(u'最快的下载软件是什么')
+    print x
 
 
 
