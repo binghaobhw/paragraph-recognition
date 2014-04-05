@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 import codecs
+import getopt
 import hashlib
 import json
 import logging
@@ -8,6 +9,7 @@ import logging.config
 from time import sleep
 
 import requests
+import sys
 
 from data_access import (Session,
                          Paragraph,
@@ -24,6 +26,9 @@ param = {'api_key': API_KEY,
          'pattern': PATTERN,
          'text': None}
 
+Q_Q_THRESHOLD = 1
+Q_A_THRESHOLD = 2
+
 THIRD_PERSON_PRONOUN_DICT = dict.fromkeys([u'他', u'她', u'它', u'他们',
                                            u'她们', u'它们',])
 
@@ -32,6 +37,8 @@ DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这�
                                             u'这些', u'那', u'那儿', u'那么',
                                             u'那里', u'那会儿', u'那样',
                                             u'那么样', u'那些'])
+
+CUE_WORD_DICT = dict.fromkeys([u'所以'])
 
 SYNONYM_DICT = {}
 with open('synonym.txt', 'rb') as f:
@@ -87,7 +94,10 @@ class AnalyzedResult():
                 return True
 
     def has_cue_words(self):
-        return True
+        for word in self.words():
+            if word['cont'] in CUE_WORD_DICT:
+                return True
+        return False
 
     def pronoun(self):
         yield self.x_pos_tag('r')
@@ -168,7 +178,31 @@ def save_analyzed_result(md5_string, result_json):
 
 
 def generate_test_set():
-    pass
+    question_num = 1
+    answer_num = 1
+    result_pattern = u'{}{}:{}\n'
+    with open('test-set.txt', 'wb') as test_set:
+        with open('actual-result.txt', 'wb') as result:
+            for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 350).filter(Paragraph.is_deleted == 0).all():
+                test_lines = [result_pattern.format('Q', question_num, paragraph.question.title)]
+                result_lines = [result_pattern.format('Q', question_num, 'N')]
+                question_num += 1
+                for reply in paragraph.replies:
+                    if reply.is_deleted == 1:
+                        continue
+                    if reply.is_question():
+                        test_line = result_pattern.format('Q',  question_num, reply.content)
+                        result_line = result_pattern.format('Q',
+                                                            question_num,  'F')
+                        result_lines.append(result_line)
+                        question_num += 1
+                    else:
+                        test_line = result_pattern.format('A',  answer_num,  reply.content)
+                        answer_num += 1
+                    test_lines.append(test_line)
+                test_lines.append('\n')
+                test_set.writelines([s.encode('utf-8') for s in test_lines])
+                result.writelines([s.encode('utf-8') for s in result_lines])
 
 
 def calculate_similarity(text, text_list):
@@ -182,10 +216,6 @@ def calculate_similarity(text, text_list):
                     score += 1
                     break
     return 1
-
-
-Q_Q_THRESHOLD = 1
-Q_A_THRESHOLD = 2
 
 
 def de_boni():
@@ -220,10 +250,23 @@ def de_boni():
                     '%s:%s\n' % (prefix, 'F' if follow_up else 'N'))
                 history_questions.append(current_question)
 
-
-def main():
+def show_usage():
     pass
 
 
+def main(argv):
+    try:
+        opts, args = getopt.getopt(argv, 'ht', ['help', 'test-set'])
+    except getopt.GetoptError:
+        show_usage()
+        return
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            show_usage()
+            return
+        elif opt in ('-t', '--test-set'):
+            generate_test_set()
+
+
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

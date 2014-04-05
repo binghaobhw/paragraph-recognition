@@ -98,6 +98,9 @@ class Reply(Base):
     def __str__(self):
         return self.__repr__()
 
+    def is_question(self):
+        return self.type == 0
+
 
 class LtpResult(Base):
     __tablename__ = 'ltp_result'
