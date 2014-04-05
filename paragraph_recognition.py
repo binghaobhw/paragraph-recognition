@@ -24,10 +24,19 @@ param = {'api_key': API_KEY,
          'pattern': PATTERN,
          'text': None}
 
+THIRD_PERSON_PRONOUN_DICT = dict.fromkeys([u'他', u'她', u'它', u'他们',
+                                           u'她们', u'它们',])
+
+DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这里',
+                                            u'这会儿', u'这样', u'这么样',
+                                            u'这些', u'那', u'那儿', u'那么',
+                                            u'那里', u'那会儿', u'那样',
+                                            u'那么样', u'那些'])
 
 SYNONYM_DICT = {}
 with open('synonym.txt', 'rb') as f:
     for line in f:
+        line = line.strip('\n')
         synonym_line = line.split(' ')
         code = synonym_line.pop(0)
         for word in synonym_line:
@@ -37,10 +46,9 @@ with open('synonym.txt', 'rb') as f:
                 SYNONYM_DICT[word] = [code]
 
 
-STOP_WORD_DICT = {}
 with open('stop-word.txt', 'rb') as f:
-    for line in f:
-        pass
+    STOP_WORD_DICT = dict((line.strip('\n'), True) for line in f)
+
 
 def is_synonymous(str1, str2):
     for line in SYNONYM_DICT:
@@ -72,14 +80,17 @@ class AnalyzedResult():
             raise TypeError('expecting type is unicode or json, but %s'
                             % result.__class__)
 
-    def has_third_person_pronoun(self):
-        return self.has_pronoun()
+    def has_pronoun(self):
+        for pronoun in self.pronoun():
+            if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
+                    or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
+                return True
 
     def has_cue_words(self):
         return True
 
-    def has_pronoun(self):
-        return self.has_x_pos_tag('r')
+    def pronoun(self):
+        yield self.x_pos_tag('r')
 
     def has_verb(self):
         return self.has_x_pos_tag('v')
@@ -92,6 +103,11 @@ class AnalyzedResult():
                         return True
         return False
 
+    def x_pos_tag(self, x):
+        for w in self.words():
+            if w['pos'] == x:
+                yield w
+
     def sentence(self):
         for p in self.json:
             for s in p:
@@ -102,9 +118,9 @@ class AnalyzedResult():
             for w in s:
                 yield w
 
-    def stop_words(self):
+    def exclude_stop_words(self):
         for w in self.words():
-            if w in STOP_WORD_DICT:
+            if w['cont'] in STOP_WORD_DICT:
                 yield w
 
 
@@ -119,7 +135,7 @@ def async_save_analyzed_result():
     for question in questions:
         title = question.title
         try:
-            r = get_analyzed_result(title)
+            get_analyzed_result(title)
         except:
             logger.error('fail to analyze %s', title, exc_info=True)
             return
@@ -133,11 +149,12 @@ def get_analyzed_result(question_text):
     md5_string = md5(question_text)
     ltp_result = Session.query(LtpResult).filter_by(md5=md5_string).first()
     if ltp_result is not None:
-        result_json = json.loads(ltp_result.analyzed_result)
+        analyzed_result = AnalyzedResult(ltp_result.json_text)
     else:
         result_json = analyze(question_text)
         save_analyzed_result(md5_string, result_json)
-    return result_json
+        analyzed_result = AnalyzedResult(result_json)
+    return analyzed_result
 
 
 def save_analyzed_result(md5_string, result_json):
@@ -158,10 +175,10 @@ def calculate_similarity(text, text_list):
     for text_to_compare in text_list:
         # sentence similarity
         score = 0
-        for word in text.stop_words():
+        for word in text.exclude_stop_words():
             # get word similarity max
-            for word_to_compare in text_to_compare.stop_words():
-                if is_synonymous(word, word_to_compare):
+            for word_to_compare in text_to_compare.exclude_stop_words():
+                if is_synonymous(word['cont'], word_to_compare['cont']):
                     score += 1
                     break
     return 1
@@ -187,7 +204,7 @@ def de_boni():
                     current_question = get_analyzed_result(question_text)
                 except:
                     return
-                if current_question.has_third_person_pronoun() \
+                if current_question.has_pronoun() \
                         or current_question.has_cue_words() \
                         or calculate_similarity(current_question,
                                                 history_questions) \
@@ -205,9 +222,7 @@ def de_boni():
 
 
 def main():
-    x = analyze(u'最快的下载软件是什么')
-    print x
-
+    pass
 
 
 if __name__ == '__main__':
