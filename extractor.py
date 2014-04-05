@@ -36,7 +36,6 @@ HEADERS = {
 'Referer': 'https://www.google.com.hk/',
 'User-agent': 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'}
 TIMEOUT = 5
-thread_num = 8
 sleep_time = 500
 browser = requests.session()
 
@@ -271,6 +270,7 @@ def is_visited(question_id):
 
 
 def sleep():
+    global sleep_time
     second = random.randint(1, sleep_time)
     logger.info('start to sleep %d', second)
     time.sleep(second)
@@ -377,6 +377,8 @@ def show_usage():
 
 
 def main(argv):
+    thread_num = 8
+    global sleep_time
     try:
         opts, args = getopt.getopt(argv, 'ht:s:', ['help', 'thread=', 'sleep='])
     except getopt.GetoptError:
@@ -399,7 +401,7 @@ def main(argv):
                 print '{} is not int'.format(arg)
                 return
 
-    print '{} threads, {} sleep time\n'.format(thread_num, sleep_time)
+    print '{} threads, {} sleep time'.format(thread_num, sleep_time)
     logging.config.dictConfig(LOGGING)
 
     exit_signal = Event()
