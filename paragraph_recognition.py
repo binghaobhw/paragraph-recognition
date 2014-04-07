@@ -84,8 +84,8 @@ class AnalyzedResult():
         elif isinstance(result, list):
             self.json = json
         else:
-            raise TypeError('expecting type is unicode or json, but %s'
-                            % result.__class__)
+            raise TypeError('expecting type is unicode or json, but {}'.
+                            format(result.__class__))
 
     def has_pronoun(self):
         for pronoun in self.pronoun():
@@ -218,7 +218,38 @@ def calculate_similarity(text, text_list):
     return 1
 
 
-def de_boni():
+class AbstractAlgorithm():
+    def is_follow_up(self, question, history_questions, previous_answer):
+        pass
+
+    def train(self, question, history_questions, previous_answer):
+        pass
+
+    def save_model(self):
+        pass
+
+
+class DeBoni(AbstractAlgorithm):
+    def is_follow_up(self, question, history_questions, previous_answer):
+        follow_up = False
+        if question.has_pronoun() \
+                or question.has_cue_words() \
+                or calculate_similarity(question,
+                                        history_questions) \
+                        > Q_Q_THRESHOLD \
+                or calculate_similarity(question,
+                                        [previous_answer]) \
+                        > Q_A_THRESHOLD:
+            follow_up = True
+        return follow_up
+
+
+class FanYang(AbstractAlgorithm):
+    pass
+
+
+def test():
+    de_boni = DeBoni()
     with open('test-set.txt', 'rb') as test_set:
         with open('predicted-result.txt', 'wb') as result_file:
             history_questions = []
@@ -226,29 +257,22 @@ def de_boni():
             for line in test_set:
                 if line == '':
                     continue
-                elif line.startswith('A'):
+                line = line.strip('\n')
+                if line.startswith('A'):
                     previous_answer = line.split(':', 1)[1]
                     continue
                 [prefix, question_text] = line.split(':', 1)
                 try:
-                    current_question = get_analyzed_result(question_text)
+                    question = get_analyzed_result(question_text)
                 except:
                     return
-                if current_question.has_pronoun() \
-                        or current_question.has_cue_words() \
-                        or calculate_similarity(current_question,
-                                                history_questions) \
-                                > Q_Q_THRESHOLD \
-                        or calculate_similarity(current_question,
-                                                [previous_answer]) \
-                                > Q_A_THRESHOLD:
-                    follow_up = True
-                else:
-                    follow_up = False
+                result = 'F'
+                if not de_boni.is_follow_up(question, history_questions, previous_answer):
+                    result = 'N'
                     history_questions = []
-                result_file.write(
-                    '%s:%s\n' % (prefix, 'F' if follow_up else 'N'))
-                history_questions.append(current_question)
+                result_file.write('{}:{}\n'.format(prefix, result))
+                history_questions.append(question)
+
 
 def show_usage():
     pass
@@ -256,7 +280,7 @@ def show_usage():
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'ht', ['help', 'test-set'])
+        opts, args = getopt.getopt(argv, 'htd', ['help', 'test-set', 'de-boni'])
     except getopt.GetoptError:
         show_usage()
         return
@@ -266,6 +290,8 @@ def main(argv):
             return
         elif opt in ('-t', '--test-set'):
             generate_test_set()
+        elif opt in ('-d', '--de-boni'):
+            test()
 
 
 if __name__ == '__main__':
