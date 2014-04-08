@@ -58,9 +58,11 @@ with open('stop-word.txt', 'rb') as f:
 
 
 def is_synonymous(str1, str2):
-    for line in SYNONYM_DICT:
-        if str1 in line and str2 in line:
-            return True
+    if str1 in SYNONYM_DICT and str2 in SYNONYM_DICT:
+        str2_code_list = SYNONYM_DICT[str2]
+        for code in SYNONYM_DICT[str1]:
+            if code in str2_code_list:
+                return True
     return False
 
 
@@ -82,7 +84,7 @@ class AnalyzedResult():
         if isinstance(result, unicode):
             self.json = json.loads(result)
         elif isinstance(result, list):
-            self.json = json
+            self.json = result
         else:
             raise TypeError('expecting type is unicode or json, but {}'.
                             format(result.__class__))
@@ -92,6 +94,7 @@ class AnalyzedResult():
             if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
                     or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
                 return True
+        return False
 
     def has_cue_words(self):
         for word in self.words():
@@ -100,7 +103,8 @@ class AnalyzedResult():
         return False
 
     def pronoun(self):
-        yield self.x_pos_tag('r')
+        for r in self.x_pos_tag('r'):
+            yield r
 
     def has_verb(self):
         return self.has_x_pos_tag('v')
@@ -130,7 +134,7 @@ class AnalyzedResult():
 
     def exclude_stop_words(self):
         for w in self.words():
-            if w['cont'] in STOP_WORD_DICT:
+            if w['cont'] not in STOP_WORD_DICT:
                 yield w
 
 
@@ -152,10 +156,13 @@ def async_save_analyzed_result():
 
 
 def md5(text):
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
+    data = text.encode('utf-8') if isinstance(text, unicode) else text
+    return hashlib.md5(data).hexdigest()
 
 
 def get_analyzed_result(question_text):
+    if question_text is None:
+        return None
     md5_string = md5(question_text)
     ltp_result = Session.query(LtpResult).filter_by(md5=md5_string).first()
     if ltp_result is not None:
@@ -206,16 +213,19 @@ def generate_test_set():
 
 
 def calculate_similarity(text, text_list):
-    for text_to_compare in text_list:
-        # sentence similarity
-        score = 0
-        for word in text.exclude_stop_words():
-            # get word similarity max
-            for word_to_compare in text_to_compare.exclude_stop_words():
-                if is_synonymous(word['cont'], word_to_compare['cont']):
-                    score += 1
-                    break
-    return 1
+    # sentence similarity
+    score = 0
+
+    if text is not None and text_list is not None:
+        t_list = text_list if isinstance(text_list, list) else [text_list]
+        for text_to_compare in t_list:
+            for word in text.exclude_stop_words():
+                # get word similarity max
+                for word_to_compare in text_to_compare.exclude_stop_words():
+                    if is_synonymous(word['cont'], word_to_compare['cont']):
+                        score += 1
+                        break
+    return score
 
 
 class AbstractAlgorithm():
@@ -238,7 +248,7 @@ class DeBoni(AbstractAlgorithm):
                                         history_questions) \
                         > Q_Q_THRESHOLD \
                 or calculate_similarity(question,
-                                        [previous_answer]) \
+                                        previous_answer) \
                         > Q_A_THRESHOLD:
             follow_up = True
         return follow_up
@@ -253,19 +263,17 @@ def test():
     with open('test-set.txt', 'rb') as test_set:
         with open('predicted-result.txt', 'wb') as result_file:
             history_questions = []
-            previous_answer = None
+            previous_answer_text = None
             for line in test_set:
+                line = line.strip('\n')
                 if line == '':
                     continue
-                line = line.strip('\n')
                 if line.startswith('A'):
-                    previous_answer = line.split(':', 1)[1]
+                    previous_answer_text = line.split(':', 1)[1]
                     continue
                 [prefix, question_text] = line.split(':', 1)
-                try:
-                    question = get_analyzed_result(question_text)
-                except:
-                    return
+                question = get_analyzed_result(question_text)
+                previous_answer = get_analyzed_result(previous_answer_text)
                 result = 'F'
                 if not de_boni.is_follow_up(question, history_questions, previous_answer):
                     result = 'N'
