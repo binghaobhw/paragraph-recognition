@@ -74,8 +74,13 @@ def build_param(text):
 def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        raise RuntimeError(
-            'bad response code %s, %s' % (response.status_code, response.url))
+        while response.status_code == 400 and response.json()['error_message'] == 'SENTENCE TOO LONG':
+            logging.info('sentence too long')
+            truncated_text = None
+            response = requests.get(LTP_URL, params=build_param(truncated_text), timeout=60)
+        else:
+            raise RuntimeError('bad response code={} url={} text={}'.format(
+                response.status_code, response.url, response.text))
     return response.json()
 
 
@@ -215,7 +220,6 @@ def generate_test_set():
 def calculate_similarity(text, text_list):
     # sentence similarity
     score = 0
-
     if text is not None and text_list is not None:
         t_list = text_list if isinstance(text_list, list) else [text_list]
         for text_to_compare in t_list:
@@ -258,6 +262,31 @@ class FanYang(AbstractAlgorithm):
     pass
 
 
+def evaluation():
+    with open('actual-result.txt', 'rb') as actual:
+        with open('predicted-result.txt', 'rb') as predicted:
+            result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+                      'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
+            new = result['N']
+            follow = result['F']
+            for actual_line in actual:
+                actual_line = actual_line.strip('\n')
+                predicted_line = predicted.next()
+                predicted_line = predicted_line.strip('\n')
+
+                result[predicted_line[-1]][actual_line[-1]] += 1
+
+            new['P'] = float(new['N']) / (new['N'] + new['F'])
+            new['R'] = float(new['N']) / (new['N'] + follow['N'])
+            new['F1'] = 2 * new['P'] * new['R'] / (new['P'] + new['R'])
+
+            follow['P'] = float(follow['F']) / (follow['F'] + follow['N'])
+            follow['R'] = float(follow['F']) / (follow['F'] + new['F'])
+            follow['F1'] = 2 * follow['P'] * follow['R'] / (follow['P'] + follow['R'])
+
+            print json.dumps(result)
+
+
 def test():
     de_boni = DeBoni()
     with open('test-set.txt', 'rb') as test_set:
@@ -288,7 +317,7 @@ def show_usage():
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'htd', ['help', 'test-set', 'de-boni'])
+        opts, args = getopt.getopt(argv, 'htde', ['help', 'test-set', 'de-boni', 'evaluation'])
     except getopt.GetoptError:
         show_usage()
         return
@@ -300,6 +329,9 @@ def main(argv):
             generate_test_set()
         elif opt in ('-d', '--de-boni'):
             test()
+            evaluation()
+        elif opt in ('-e', '--evaluation'):
+            evaluation()
 
 
 if __name__ == '__main__':
