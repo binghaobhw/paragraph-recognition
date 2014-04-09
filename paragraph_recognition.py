@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
-import codecs
 import getopt
 import hashlib
 import json
 import logging
 import logging.config
-from time import sleep
+import math
 
 import requests
 import sys
@@ -26,6 +25,8 @@ param = {'api_key': API_KEY,
          'pattern': PATTERN,
          'text': None}
 
+WORD_VECTOR = {}
+
 THIRD_PERSON_PRONOUN_DICT = dict.fromkeys([u'他', u'她', u'它', u'他们',
                                            u'她们', u'它们',])
 
@@ -37,30 +38,37 @@ DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这�
 
 CUE_WORD_DICT = dict.fromkeys([u'所以'])
 
-SYNONYM_DICT = {}
-with open('synonym.txt', 'rb') as f:
-    for line in f:
-        line = line.strip('\n')
-        synonym_line = line.split(' ')
-        code = synonym_line.pop(0)
-        for word in synonym_line:
-            if word in SYNONYM_DICT:
-                SYNONYM_DICT[word].append(code)
-            else:
-                SYNONYM_DICT[word] = [code]
-
 
 with open('stop-word.txt', 'rb') as f:
     STOP_WORD_DICT = dict((line.strip('\n'), True) for line in f)
 
 
-def is_synonymous(str1, str2):
-    if str1 in SYNONYM_DICT and str2 in SYNONYM_DICT:
-        str2_code_list = SYNONYM_DICT[str2]
-        for code in SYNONYM_DICT[str1]:
-            if code in str2_code_list:
-                return True
-    return False
+def build_word_vector():
+    with open('baike-50.vec.txt', 'rb') as f:
+        f.next()
+        for line in f:
+            line = line.strip('\n')
+            columns = line.split(' ')
+            word = columns[0]
+            vector = [float(num_text) for num_text in columns[1:]]
+            WORD_VECTOR[word] = vector
+
+
+def vector_cos(a, b):
+    if len(a) != len(b):
+        return None
+    part_up = 0.0
+    a_sq = 0.0
+    b_sq = 0.0
+    for a1, b1 in zip(a,b):
+        part_up += a1*b1
+        a_sq += a1**2
+        b_sq += b1**2
+    part_down = math.sqrt(a_sq*b_sq)
+    if part_down == 0.0:
+        return None
+    else:
+        return part_up / part_down
 
 
 def build_param(text):
@@ -74,7 +82,6 @@ def truncate(text):
         logger.error('no separator')
         return text[:300]
     return split[0]
-
 
 
 def analyze(text):
@@ -185,7 +192,12 @@ def get_analyzed_result(question_text):
     if ltp_result is not None:
         analyzed_result = AnalyzedResult(ltp_result.json_text)
     else:
-        result_json = analyze(question_text)
+        try:
+            result_json = analyze(question_text)
+        except RuntimeError:
+            logger.error('fail to invoke ltp api, text=%s', question_text, exc_info=True)
+            raise RuntimeError()
+
         save_analyzed_result(md5_string, result_json)
         analyzed_result = AnalyzedResult(result_json)
     return analyzed_result
@@ -195,10 +207,13 @@ def save_analyzed_result(md5_string, result_json):
     ltp_result = LtpResult(md5_string,
                            json.dumps(result_json, ensure_ascii=False))
     Session.add(ltp_result)
+    logger.info('start to insert ltp result, md5=%s', md5_string)
     try:
         Session.commit()
     except:
         Session.rollback()
+        logger.error('fail to insert')
+    logger.info('finished inserting ltp result')
 
 
 def generate_test_set():
@@ -229,22 +244,32 @@ def generate_test_set():
                 result.writelines([s.encode('utf-8') for s in result_lines])
 
 
-def calculate_similarity(text, text_list):
+def word_similarity(a, b):
+    if a in WORD_VECTOR and b in WORD_VECTOR:
+        return vector_cos(WORD_VECTOR[a], WORD_VECTOR[b])
+    return 0.0
+
+
+def sentence_similarity(text, text_list):
     # sentence similarity
-    score = 0
+    max_sentence_score = 0.0
     if text is not None and text_list is not None:
         t_list = text_list if isinstance(text_list, list) else [text_list]
         for text_to_compare in t_list:
+            sentence_score = 0.0
             for word in text.exclude_stop_words():
-                # get word similarity max
+                # word similarity
+                max_word_score = 0.0
                 for word_to_compare in text_to_compare.exclude_stop_words():
-                    if is_synonymous(word['cont'], word_to_compare['cont']):
-                        score += 1
-                        logger.info('%s, %s', word['cont'].encode('utf-8'),
-                                    word_to_compare['cont'].encode('utf-8'))
-                        break
-    logger.info('%s', score)
-    return score
+                    word_score = word_similarity(word['cont'], word_to_compare['cont'])
+                    logger.info('score=%s, word1=%s, word2=%s', word_score, word['cont'].encode('utf-8'), word_to_compare['cont'].encode('utf-8'))
+                    if max_word_score < word_score:
+                        max_word_score = word_score
+                sentence_score += max_word_score
+            if max_sentence_score < sentence_score:
+                max_sentence_score = sentence_score
+    logger.info('max_sentence_score=%s', max_sentence_score)
+    return max_sentence_score
 
 
 class AbstractAlgorithm():
@@ -267,10 +292,10 @@ class DeBoni(AbstractAlgorithm):
         follow_up = False
         if question.has_pronoun() \
                 or question.has_cue_words() \
-                or calculate_similarity(question,
+                or sentence_similarity(question,
                                         history_questions) \
                         > self.q_q_threshold \
-                or calculate_similarity(question,
+                or sentence_similarity(question,
                                         previous_answer) \
                         > self.q_a_threshold:
             follow_up = True
@@ -351,7 +376,6 @@ def main(argv):
             generate_test_set()
         elif opt in ('-d', '--de-boni'):
             test()
-            evaluation()
         elif opt in ('-e', '--evaluation'):
             evaluation()
 
