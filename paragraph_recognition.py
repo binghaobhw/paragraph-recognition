@@ -47,7 +47,7 @@ def build_word_vector():
     with open('baike-50.vec.txt', 'rb') as f:
         f.next()
         for line in f:
-            line = line.strip('\n')
+            line = line.strip()
             columns = line.split(' ')
             word = columns[0]
             vector = [float(num_text) for num_text in columns[1:]]
@@ -160,23 +160,6 @@ class AnalyzedResult():
         for w in self.words():
             if w['cont'] not in STOP_WORD_DICT:
                 yield w
-
-
-def async_save_analyzed_result():
-    logger = logging.getLogger(LOG_PROJECT_NAME + '.async_save')
-    subquery = Session.query(Paragraph.question_id.distinct().
-                             label('question_id')) \
-        .filter_by(is_deleted=0).subquery()
-    questions = Session.query(Question) \
-        .join(subquery, Question.question_id == subquery.c.question_id)
-
-    for question in questions:
-        title = question.title
-        try:
-            get_analyzed_result(title)
-        except:
-            logger.error('fail to analyze %s', title, exc_info=True)
-            return
 
 
 def md5(text):
@@ -314,9 +297,9 @@ def evaluation():
             new = result['N']
             follow = result['F']
             for predicted_line in predicted:
-                predicted_line = predicted_line.strip('\n')
+                predicted_line = predicted_line.strip()
                 actual_line = actual.next()
-                actual_line = actual_line.strip('\n')
+                actual_line = actual_line.strip()
 
                 result[predicted_line[-1]][actual_line[-1]] += 1
 
@@ -338,7 +321,7 @@ def test():
             history_questions = []
             previous_answer_text = None
             for line in test_set:
-                line = line.strip('\n')
+                line = line.strip()
                 if line == '':
                     continue
                 if line.startswith('A'):
@@ -375,6 +358,7 @@ def main(argv):
         elif opt in ('-t', '--test-set'):
             generate_test_set()
         elif opt in ('-d', '--de-boni'):
+            build_word_vector()
             test()
         elif opt in ('-e', '--evaluation'):
             evaluation()
