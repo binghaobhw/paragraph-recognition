@@ -16,7 +16,7 @@ from data_access import (Session,
                          LtpResult, Question)
 from log_config import LOG_PROJECT_NAME, LOGGING
 
-
+logger = logging.getLogger(LOG_PROJECT_NAME)
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
 API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
 FORMAT = 'json'
@@ -25,9 +25,6 @@ param = {'api_key': API_KEY,
          'format': FORMAT,
          'pattern': PATTERN,
          'text': None}
-
-Q_Q_THRESHOLD = 1
-Q_A_THRESHOLD = 2
 
 THIRD_PERSON_PRONOUN_DICT = dict.fromkeys([u'他', u'她', u'它', u'他们',
                                            u'她们', u'它们',])
@@ -71,12 +68,21 @@ def build_param(text):
     return param
 
 
+def truncate(text):
+    split = text.split(' ', 1)
+    if len(split) == 1:
+        logger.error('no separator')
+        return text[:300]
+    return split[0]
+
+
+
 def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        while response.status_code == 400 and response.json()['error_message'] == 'SENTENCE TOO LONG':
-            logging.info('sentence too long')
-            truncated_text = None
+        if response.status_code == 400 and response.json()['error_message'] == 'SENTENCE TOO LONG':
+            logger.info('sentence too long, truncate')
+            truncated_text = truncate(text)
             response = requests.get(LTP_URL, params=build_param(truncated_text), timeout=60)
         else:
             raise RuntimeError('bad response code={} url={} text={}'.format(
@@ -95,17 +101,23 @@ class AnalyzedResult():
                             format(result.__class__))
 
     def has_pronoun(self):
+        result = False
         for pronoun in self.pronoun():
             if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
                     or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
-                return True
-        return False
+                result = True
+                break
+        logger.info('%s', result)
+        return result
 
     def has_cue_words(self):
+        result = False
         for word in self.words():
             if word['cont'] in CUE_WORD_DICT:
-                return True
-        return False
+                result = True
+                break
+        logger.info('%s', result)
+        return result
 
     def pronoun(self):
         for r in self.x_pos_tag('r'):
@@ -228,7 +240,10 @@ def calculate_similarity(text, text_list):
                 for word_to_compare in text_to_compare.exclude_stop_words():
                     if is_synonymous(word['cont'], word_to_compare['cont']):
                         score += 1
+                        logger.info('%s, %s', word['cont'].encode('utf-8'),
+                                    word_to_compare['cont'].encode('utf-8'))
                         break
+    logger.info('%s', score)
     return score
 
 
@@ -244,16 +259,20 @@ class AbstractAlgorithm():
 
 
 class DeBoni(AbstractAlgorithm):
+    def __init__(self):
+        self.q_q_threshold = 1
+        self.q_a_threshold = 2
+
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
         if question.has_pronoun() \
                 or question.has_cue_words() \
                 or calculate_similarity(question,
                                         history_questions) \
-                        > Q_Q_THRESHOLD \
+                        > self.q_q_threshold \
                 or calculate_similarity(question,
                                         previous_answer) \
-                        > Q_A_THRESHOLD:
+                        > self.q_a_threshold:
             follow_up = True
         return follow_up
 
@@ -269,10 +288,10 @@ def evaluation():
                       'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
             new = result['N']
             follow = result['F']
-            for actual_line in actual:
-                actual_line = actual_line.strip('\n')
-                predicted_line = predicted.next()
+            for predicted_line in predicted:
                 predicted_line = predicted_line.strip('\n')
+                actual_line = actual.next()
+                actual_line = actual_line.strip('\n')
 
                 result[predicted_line[-1]][actual_line[-1]] += 1
 
@@ -304,9 +323,11 @@ def test():
                 question = get_analyzed_result(question_text)
                 previous_answer = get_analyzed_result(previous_answer_text)
                 result = 'F'
+                logger.info('start to test %s', prefix)
                 if not de_boni.is_follow_up(question, history_questions, previous_answer):
                     result = 'N'
                     history_questions = []
+                logger.info('finished testing %s', prefix)
                 result_file.write('{}:{}\n'.format(prefix, result))
                 history_questions.append(question)
 
@@ -321,6 +342,7 @@ def main(argv):
     except getopt.GetoptError:
         show_usage()
         return
+    logging.config.dictConfig(LOGGING)
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             show_usage()
