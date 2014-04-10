@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+import codecs
 import getopt
 import hashlib
 import json
@@ -39,12 +40,12 @@ DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这�
 CUE_WORD_DICT = dict.fromkeys([u'所以'])
 
 
-with open('stop-word.txt', 'rb') as f:
-    STOP_WORD_DICT = dict((line.strip('\n'), True) for line in f)
+with codecs.open('stop-word.txt', encoding='utf-8', mode='rb') as f:
+    STOP_WORD_DICT = dict.fromkeys([line.strip() for line in f])
 
 
 def build_word_vector():
-    with open('baike-50.vec.txt', 'rb') as f:
+    with codecs.open('baike-50.vec.txt', encoding='utf-8', mode='rb') as f:
         f.next()
         for line in f:
             line = line.strip()
@@ -203,8 +204,8 @@ def generate_test_set():
     question_num = 1
     answer_num = 1
     result_pattern = u'{}{}:{}\n'
-    with open('test-set.txt', 'wb') as test_set:
-        with open('actual-result.txt', 'wb') as result:
+    with codecs.open('test-set.txt', encoding='utf-8', mode='wb') as test_set:
+        with codecs.open('actual-result.txt', encoding='utf-8', mode='wb') as result:
             for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 350).filter(Paragraph.is_deleted == 0).all():
                 test_lines = [result_pattern.format('Q', question_num, paragraph.question.title)]
                 result_lines = [result_pattern.format('Q', question_num, 'N')]
@@ -223,8 +224,8 @@ def generate_test_set():
                         answer_num += 1
                     test_lines.append(test_line)
                 test_lines.append('\n')
-                test_set.writelines([s.encode('utf-8') for s in test_lines])
-                result.writelines([s.encode('utf-8') for s in result_lines])
+                test_set.writelines([s for s in test_lines])
+                result.writelines([s for s in result_lines])
 
 
 def word_similarity(a, b):
@@ -241,11 +242,12 @@ def sentence_similarity(text, text_list):
         for text_to_compare in t_list:
             sentence_score = 0.0
             for word in text.exclude_stop_words():
+                word_text = word['cont']
                 # word similarity
                 max_word_score = 0.0
                 for word_to_compare in text_to_compare.exclude_stop_words():
-                    word_score = word_similarity(word['cont'], word_to_compare['cont'])
-                    logger.info('score=%s, word1=%s, word2=%s', word_score, word['cont'].encode('utf-8'), word_to_compare['cont'].encode('utf-8'))
+                    word_score = word_similarity(word_text, word_to_compare['cont'])
+                    logger.info('score=%s, word1=%s, word2=%s', word_score, word_text.encode('utf-8'), word_to_compare['cont'].encode('utf-8'))
                     if max_word_score < word_score:
                         max_word_score = word_score
                 sentence_score += max_word_score
@@ -290,8 +292,8 @@ class FanYang(AbstractAlgorithm):
 
 
 def evaluation():
-    with open('actual-result.txt', 'rb') as actual:
-        with open('predicted-result.txt', 'rb') as predicted:
+    with codecs.open('actual-result.txt', encoding='utf-8', mode='rb') as actual:
+        with codecs.open('predicted-result.txt', encoding='utf-8', mode='rb') as predicted:
             result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
                       'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
             new = result['N']
@@ -316,8 +318,8 @@ def evaluation():
 
 def test():
     de_boni = DeBoni()
-    with open('test-set.txt', 'rb') as test_set:
-        with open('predicted-result.txt', 'wb') as result_file:
+    with codecs.open('test-set.txt', encoding='utf-8', mode='rb') as test_set:
+        with codecs.open('predicted-result.txt', encoding='utf-8', mode='wb') as result_file:
             history_questions = []
             previous_answer_text = None
             for line in test_set:

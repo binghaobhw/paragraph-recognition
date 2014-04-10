@@ -15,7 +15,8 @@ from sqlalchemy.dialects.mysql import (BIGINT,
                                        DATETIME,
                                        TINYINT,
                                        INTEGER,
-                                       VARCHAR)
+                                       VARCHAR,
+                                       TEXT)
 
 engine = create_engine(
     'mysql://root:wangbinghao@127.0.0.1:3306/test?charset=utf8',
@@ -106,7 +107,7 @@ class LtpResult(Base):
     __tablename__ = 'ltp_result'
 
     md5 = Column(CHAR(32), primary_key=True)
-    json_text = Column(VARCHAR(10000))
+    json_text = Column(TEXT)
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
