@@ -6,7 +6,7 @@ from data_access import Paragraph
 import traceback
 
 
-with open('baidu-zhidao-paragraph.txt', 'wb') as f:
+with open('data/baidu-zhidao-paragraph.txt', 'wb') as f:
     count = 0
     try:
         for paragraph in Session.query(Paragraph):

@@ -24,8 +24,8 @@ from log_config import LOGGING, LOG_PROJECT_NAME
 
 logger = logging.getLogger(LOG_PROJECT_NAME + '.extractor')
 
-TOP_CATEGORY_CSV = 'top-category.csv'
-SUB_CATEGORY_CSV = 'sub-category.csv'
+TOP_CATEGORY_CSV = 'data/top-category.csv'
+SUB_CATEGORY_CSV = 'data/sub-category.csv'
 NUM_RE = r'\d+'
 HEADERS = {
 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',

@@ -13,7 +13,7 @@ import sys
 
 from data_access import (Session,
                          Paragraph,
-                         LtpResult, Question)
+                         LtpResult)
 from log_config import LOG_PROJECT_NAME, LOGGING
 
 logger = logging.getLogger(LOG_PROJECT_NAME)
@@ -40,12 +40,13 @@ DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这�
 CUE_WORD_DICT = dict.fromkeys([u'所以'])
 
 
-with codecs.open('stop-word.txt', encoding='utf-8', mode='rb') as f:
+with codecs.open('data/stop-word.txt', encoding='utf-8', mode='rb') as f:
     STOP_WORD_DICT = dict.fromkeys([line.strip() for line in f])
 
 
 def build_word_vector():
-    with codecs.open('baike-50.vec.txt', encoding='utf-8', mode='rb') as f:
+    with codecs.open('data/baike-50.vec.txt', encoding='utf-8', mode='rb') as f:
+        logger.info('start to build word vector')
         f.next()
         for line in f:
             line = line.strip()
@@ -53,6 +54,7 @@ def build_word_vector():
             word = columns[0]
             vector = [float(num_text) for num_text in columns[1:]]
             WORD_VECTOR[word] = vector
+        logger.info('finished building word vector')
 
 
 def vector_cos(a, b):
@@ -109,16 +111,21 @@ class AnalyzedResult():
                             format(result.__class__))
 
     def has_pronoun(self):
+        len_threshold = 10
         result = False
-        for pronoun in self.pronoun():
-            if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
-                    or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
-                result = True
-                break
+        if self.word_count() < len_threshold:
+            for pronoun in self.pronouns():
+                if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
+                        or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
+                    result = True
+                    break
         logger.info('%s', result)
         return result
 
-    def has_cue_words(self):
+    def word_count(self):
+        return sum(len(s) for s in self.sentences())
+
+    def has_cue_word(self):
         result = False
         for word in self.words():
             if word['cont'] in CUE_WORD_DICT:
@@ -127,37 +134,29 @@ class AnalyzedResult():
         logger.info('%s', result)
         return result
 
-    def pronoun(self):
-        for r in self.x_pos_tag('r'):
+    def pronouns(self):
+        for r in self.words_with_pos_tag('r'):
             yield r
 
     def has_verb(self):
-        return self.has_x_pos_tag('v')
+        return self.words_with_pos_tag('v')
 
-    def has_x_pos_tag(self, x):
-        for p in self.json:
-            for s in p:
-                for w in s:
-                    if w['pos'] == x:
-                        return True
-        return False
-
-    def x_pos_tag(self, x):
+    def words_with_pos_tag(self, x):
         for w in self.words():
             if w['pos'] == x:
                 yield w
 
-    def sentence(self):
+    def sentences(self):
         for p in self.json:
             for s in p:
                 yield s
 
     def words(self):
-        for s in self.sentence():
+        for s in self.sentences():
             for w in s:
                 yield w
 
-    def exclude_stop_words(self):
+    def words_exclude_stop(self):
         for w in self.words():
             if w['cont'] not in STOP_WORD_DICT:
                 yield w
@@ -204,8 +203,8 @@ def generate_test_set():
     question_num = 1
     answer_num = 1
     result_pattern = u'{}{}:{}\n'
-    with codecs.open('test-set.txt', encoding='utf-8', mode='wb') as test_set:
-        with codecs.open('actual-result.txt', encoding='utf-8', mode='wb') as result:
+    with codecs.open('data/test-set.txt', encoding='utf-8', mode='wb') as test_set:
+        with codecs.open('data/actual-result.txt', encoding='utf-8', mode='wb') as result:
             for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 350).filter(Paragraph.is_deleted == 0).all():
                 test_lines = [result_pattern.format('Q', question_num, paragraph.question.title)]
                 result_lines = [result_pattern.format('Q', question_num, 'N')]
@@ -229,9 +228,11 @@ def generate_test_set():
 
 
 def word_similarity(a, b):
+    score = 0.0
     if a in WORD_VECTOR and b in WORD_VECTOR:
-        return vector_cos(WORD_VECTOR[a], WORD_VECTOR[b])
-    return 0.0
+        row_score = vector_cos(WORD_VECTOR[a], WORD_VECTOR[b])
+        score = (row_score + 1) / 2
+    return score
 
 
 def sentence_similarity(text, text_list):
@@ -241,19 +242,23 @@ def sentence_similarity(text, text_list):
         t_list = text_list if isinstance(text_list, list) else [text_list]
         for text_to_compare in t_list:
             sentence_score = 0.0
-            for word in text.exclude_stop_words():
+            sentence_len = 0
+            for word in text.words_exclude_stop():
+                sentence_len += 1
                 word_text = word['cont']
                 # word similarity
                 max_word_score = 0.0
-                for word_to_compare in text_to_compare.exclude_stop_words():
+                for word_to_compare in text_to_compare.words_exclude_stop():
                     word_score = word_similarity(word_text, word_to_compare['cont'])
-                    logger.info('score=%s, word1=%s, word2=%s', word_score, word_text.encode('utf-8'), word_to_compare['cont'].encode('utf-8'))
                     if max_word_score < word_score:
                         max_word_score = word_score
                 sentence_score += max_word_score
+            if sentence_len != 0:
+                sentence_score /= sentence_len
+            logger.info('sentence score=%s', sentence_score)
             if max_sentence_score < sentence_score:
                 max_sentence_score = sentence_score
-    logger.info('max_sentence_score=%s', max_sentence_score)
+    logger.info('max sentence score=%s', max_sentence_score)
     return max_sentence_score
 
 
@@ -270,19 +275,21 @@ class AbstractAlgorithm():
 
 class DeBoni(AbstractAlgorithm):
     def __init__(self):
-        self.q_q_threshold = 1
-        self.q_a_threshold = 2
+        self.q_q_threshold = 0.5
+        self.q_a_threshold = 0.5
+
+    def set_q_q_threshold(self, q_q_threshol):
+        self.q_q_threshold = q_q_threshol
+
+    def set_q_a_threshold(self, q_a_threshol):
+        self.q_a_threshold = q_a_threshol
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
         if question.has_pronoun() \
-                or question.has_cue_words() \
-                or sentence_similarity(question,
-                                        history_questions) \
-                        > self.q_q_threshold \
-                or sentence_similarity(question,
-                                        previous_answer) \
-                        > self.q_a_threshold:
+                or question.has_cue_word() \
+                or sentence_similarity(question, history_questions) > self.q_q_threshold \
+                or sentence_similarity(question, previous_answer) > self.q_a_threshold:
             follow_up = True
         return follow_up
 
@@ -291,9 +298,9 @@ class FanYang(AbstractAlgorithm):
     pass
 
 
-def evaluation():
-    with codecs.open('actual-result.txt', encoding='utf-8', mode='rb') as actual:
-        with codecs.open('predicted-result.txt', encoding='utf-8', mode='rb') as predicted:
+def evaluation(file_name='data/predicted-result.txt'):
+    with codecs.open('data/actual-result.txt', encoding='utf-8', mode='rb') as actual:
+        with codecs.open(file_name, encoding='utf-8', mode='rb') as predicted:
             result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
                       'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
             new = result['N']
@@ -313,13 +320,13 @@ def evaluation():
             follow['R'] = float(follow['F']) / (follow['F'] + new['F'])
             follow['F1'] = 2 * follow['P'] * follow['R'] / (follow['P'] + follow['R'])
 
-            print json.dumps(result)
+            return result
 
 
-def test():
-    de_boni = DeBoni()
-    with codecs.open('test-set.txt', encoding='utf-8', mode='rb') as test_set:
-        with codecs.open('predicted-result.txt', encoding='utf-8', mode='wb') as result_file:
+def test(algorithm, file_name='data/predicted-result.txt'):
+    with codecs.open('data/test-set.txt', encoding='utf-8', mode='rb') as test_set:
+        with codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
+            logger.info('start to test')
             history_questions = []
             previous_answer_text = None
             for line in test_set:
@@ -334,12 +341,27 @@ def test():
                 previous_answer = get_analyzed_result(previous_answer_text)
                 result = 'F'
                 logger.info('start to test %s', prefix)
-                if not de_boni.is_follow_up(question, history_questions, previous_answer):
+                if not algorithm.is_follow_up(question, history_questions, previous_answer):
                     result = 'N'
                     history_questions = []
                 logger.info('finished testing %s', prefix)
                 result_file.write('{}:{}\n'.format(prefix, result))
                 history_questions.append(question)
+            logger.info('finished testing')
+
+
+def adjust_threshold():
+    de_boni = DeBoni()
+    result = []
+    for x in range(0, 11, 1):
+        threshold = x / 10.0
+        logger.info('set question-question similarity threshold=%s', threshold)
+        de_boni.set_q_q_threshold(threshold)
+        file_name = 'data/q-q-{}.txt'.format(threshold)
+        test(de_boni, file_name=file_name)
+        result.push({'threshold': threshold, 'result': evaluation(file_name=file_name)})
+    with codecs.open('data/adjust-threshold.json', encoding='utf-8', mode='wb') as f:
+        f.write(json.dumps(result))
 
 
 def show_usage():
@@ -348,7 +370,7 @@ def show_usage():
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'htde', ['help', 'test-set', 'de-boni', 'evaluation'])
+        opts, args = getopt.getopt(argv, 'htdea', ['help', 'test-set', 'de-boni', 'evaluation', 'adjust-threshold'])
     except getopt.GetoptError:
         show_usage()
         return
@@ -364,6 +386,9 @@ def main(argv):
             test()
         elif opt in ('-e', '--evaluation'):
             evaluation()
+        elif opt in ('-a', '--adjust-threshold'):
+            build_word_vector()
+            adjust_threshold()
 
 
 if __name__ == '__main__':
