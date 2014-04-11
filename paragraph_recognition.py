@@ -326,7 +326,7 @@ def evaluation(file_name='data/predicted-result.txt'):
 def test(algorithm, file_name='data/predicted-result.txt'):
     with codecs.open('data/test-set.txt', encoding='utf-8', mode='rb') as test_set:
         with codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
-            logger.info('start to test')
+            logger.info('start to test all')
             history_questions = []
             previous_answer_text = None
             for line in test_set:
@@ -347,20 +347,24 @@ def test(algorithm, file_name='data/predicted-result.txt'):
                 logger.info('finished testing %s', prefix)
                 result_file.write('{}:{}\n'.format(prefix, result))
                 history_questions.append(question)
-            logger.info('finished testing')
+            logger.info('finished testing all')
 
 
 def adjust_threshold():
     de_boni = DeBoni()
+    q_a_threshold = 0.9
+    logger.info('set question-answer similarity threshold=%s', q_a_threshold)
+    de_boni.set_q_a_threshold(q_a_threshold)
     result = []
     for x in range(0, 11, 1):
-        threshold = x / 10.0
-        logger.info('set question-question similarity threshold=%s', threshold)
-        de_boni.set_q_q_threshold(threshold)
-        file_name = 'data/q-q-{}.txt'.format(threshold)
+        q_q_threshold = x / 10.0
+        logger.info('set question-question similarity threshold=%s', q_q_threshold)
+        de_boni.set_q_q_threshold(q_q_threshold)
+        file_name = 'data/q-q-{}-q-a-{}.txt'.format(q_q_threshold, q_a_threshold)
         test(de_boni, file_name=file_name)
-        result.push({'threshold': threshold, 'result': evaluation(file_name=file_name)})
-    with codecs.open('data/adjust-threshold.json', encoding='utf-8', mode='wb') as f:
+        evaluation_result = evaluation(file_name=file_name)
+        result.append({'threshold': q_q_threshold, 'result': evaluation_result})
+    with codecs.open('data/adjust-threshold-q-a-{}.json'.format(q_a_threshold), encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
 
 
