@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+from Queue import Queue
 import codecs
 import getopt
 import hashlib
@@ -7,14 +8,14 @@ import json
 import logging
 import logging.config
 import math
-
+import os
 import requests
 import sys
-
 from data_access import (Session,
                          Paragraph,
                          LtpResult)
-from log_config import LOG_PROJECT_NAME, LOGGING
+from log_config import (LOG_PROJECT_NAME,
+                        LOGGING)
 
 logger = logging.getLogger(LOG_PROJECT_NAME)
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
@@ -37,7 +38,9 @@ DEMONSTRATIVE_PRONOUN_DICT = dict.fromkeys([u'这', u'这儿', u'这么', u'这�
                                             u'那里', u'那会儿', u'那样',
                                             u'那么样', u'那些'])
 
-CUE_WORD_DICT = dict.fromkeys([u'所以'])
+
+with codecs.open('data/cue-word.txt', encoding='utf-8', mode='rb') as f:
+    CUE_WORD_DICT = dict.fromkeys([line.strip() for line in f])
 
 
 with codecs.open('data/stop-word.txt', encoding='utf-8', mode='rb') as f:
@@ -139,7 +142,12 @@ class AnalyzedResult():
             yield r
 
     def has_verb(self):
-        return self.words_with_pos_tag('v')
+        result = False
+        for w in self.words_with_pos_tag('v'):
+            result = True
+            break
+        logger.info('%s', result)
+        return result
 
     def words_with_pos_tag(self, x):
         for w in self.words():
@@ -203,9 +211,16 @@ def generate_test_set():
     question_num = 1
     answer_num = 1
     result_pattern = u'{}{}:{}\n'
+    previous_category_id = None
+    queue = Queue()
     with codecs.open('data/test-set.txt', encoding='utf-8', mode='wb') as test_set:
         with codecs.open('data/actual-result.txt', encoding='utf-8', mode='wb') as result:
             for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 350).filter(Paragraph.is_deleted == 0).all():
+                if paragraph.question.category_id == previous_category_id:
+                    logger.info('same category id, put %s into queue',
+                                paragraph.paragraph_id)
+                    queue.put(paragraph)
+                    continue
                 test_lines = [result_pattern.format('Q', question_num, paragraph.question.title)]
                 result_lines = [result_pattern.format('Q', question_num, 'N')]
                 question_num += 1
@@ -288,6 +303,7 @@ class DeBoni(AbstractAlgorithm):
         follow_up = False
         if question.has_pronoun() \
                 or question.has_cue_word() \
+                or not question.has_verb() \
                 or sentence_similarity(question, history_questions) > self.q_q_threshold \
                 or sentence_similarity(question, previous_answer) > self.q_a_threshold:
             follow_up = True
@@ -350,18 +366,47 @@ def test(algorithm, file_name='data/predicted-result.txt'):
             logger.info('finished testing all')
 
 
-def adjust_threshold():
+def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
+    if q_a_threshold is not None and q_q_threshold is not None:
+        raise RuntimeError('no more than 1 threshold given but 2')
     de_boni = DeBoni()
-    q_a_threshold = 0.9
-    logger.info('set question-answer similarity threshold=%s', q_a_threshold)
-    de_boni.set_q_a_threshold(q_a_threshold)
+    scheme = 0
+    if q_a_threshold is not None:
+        scheme += 1
+        logger.info('set constant question-answer similarity threshold=%s',
+                    q_a_threshold)
+        de_boni.set_q_a_threshold(q_a_threshold)
+    if q_q_threshold is not None:
+        scheme += 2
+        logger.info('set constant question-question similarity threshold=%s',
+                    q_q_threshold)
+        de_boni.set_q_q_threshold(q_q_threshold)
     result = []
     for x in range(0, 11, 1):
-        q_q_threshold = x / 10.0
-        logger.info('set question-question similarity threshold=%s', q_q_threshold)
-        de_boni.set_q_q_threshold(q_q_threshold)
-        file_name = 'data/q-q-{}-q-a-{}.txt'.format(q_q_threshold, q_a_threshold)
-        test(de_boni, file_name=file_name)
+        threshold = x / 10.0
+        # q_a_threshold固定
+        if scheme == 1:
+            logger.info('set question-question similarity thresholds=%s',
+                        threshold)
+            de_boni.set_q_q_threshold(threshold)
+            file_name = 'data/q-q-{}-q-a-{}.txt'.format(threshold, q_a_threshold)
+        # q_q_threshold固定
+        elif scheme == 2:
+            logger.info('set question-answer similarity thresholds=%s',
+                        threshold)
+            de_boni.set_q_a_threshold(threshold)
+            file_name = 'data/q-q-{}-q-a-{}.txt'.format(q_q_threshold,
+                                                        threshold)
+        else:
+            logger.info('set all similarity thresholds=%s',
+                        threshold)
+            de_boni.set_q_a_threshold(threshold)
+            de_boni.set_q_q_threshold(threshold)
+            file_name = 'data/q-q-{0}-q-a-{0}.txt'.format(threshold)
+        if os.path.isfile(file_name):
+            logger.info('%s exists', file_name)
+        else:
+            test(de_boni, file_name=file_name)
         evaluation_result = evaluation(file_name=file_name)
         result.append({'threshold': q_q_threshold, 'result': evaluation_result})
     with codecs.open('data/adjust-threshold-q-a-{}.json'.format(q_a_threshold), encoding='utf-8', mode='wb') as f:
@@ -392,7 +437,7 @@ def main(argv):
             evaluation()
         elif opt in ('-a', '--adjust-threshold'):
             build_word_vector()
-            adjust_threshold()
+            adjust_threshold(q_a_threshold=0.8)
 
 
 if __name__ == '__main__':
