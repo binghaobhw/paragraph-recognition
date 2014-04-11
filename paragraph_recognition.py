@@ -86,7 +86,7 @@ def truncate(text):
     split = text.split(' ', 1)
     if len(split) == 1:
         logger.error('no separator')
-        return text[:300]
+        return text[:50]
     return split[0]
 
 
@@ -207,39 +207,71 @@ def save_analyzed_result(md5_string, result_json):
     logger.info('finished inserting ltp result')
 
 
-def generate_test_set():
-    question_num = 1
-    answer_num = 1
-    result_pattern = u'{}{}:{}\n'
-    previous_category_id = None
-    queue = Queue()
-    with codecs.open('data/test-set.txt', encoding='utf-8', mode='wb') as test_set:
-        with codecs.open('data/actual-result.txt', encoding='utf-8', mode='wb') as result:
-            for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 350).filter(Paragraph.is_deleted == 0).all():
-                if paragraph.question.category_id == previous_category_id:
-                    logger.info('same category id, put %s into queue',
-                                paragraph.paragraph_id)
-                    queue.put(paragraph)
-                    continue
-                test_lines = [result_pattern.format('Q', question_num, paragraph.question.title)]
-                result_lines = [result_pattern.format('Q', question_num, 'N')]
-                question_num += 1
-                for reply in paragraph.replies:
-                    if reply.is_deleted == 1:
+class DataSetGenerator():
+    def __init__(self, data_set_file_name='data/test-set.txt',
+                 result_file_name='data/actual-result.txt'):
+        self.result_pattern = u'{}{}:{}\n'
+        self.queue = Queue()
+        self.question_num = 1
+        self.answer_num = 1
+        self.data_set_file_name = data_set_file_name
+        self.result_file_name = result_file_name
+
+    def generate_paragraph(self, paragraph):
+        paragraph_lines = [self.result_pattern.format('Q', self.question_num, paragraph.question.title)]
+        result_lines = [self.result_pattern.format('Q', self.question_num, 'N')]
+        self.question_num += 1
+        for reply in paragraph.replies:
+            if reply.is_deleted == 1:
+                continue
+            if reply.is_question():
+                test_line = self.result_pattern.format('Q',  self.question_num, reply.content)
+                result_line = self.result_pattern.format('Q', self.question_num, 'F')
+                result_lines.append(result_line)
+                self.question_num += 1
+            else:
+                test_line = self.result_pattern.format('A', self.answer_num, reply.content)
+                self.answer_num += 1
+            paragraph_lines.append(test_line)
+        return paragraph_lines, result_lines
+
+    def generate(self):
+        previous_category_id = None
+        with codecs.open(self.data_set_file_name, encoding='utf-8', mode='wb') as data_set:
+            with codecs.open(self.result_file_name, encoding='utf-8', mode='wb') as result:
+                logger.info('start to generate data set')
+                for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 400).filter(Paragraph.is_deleted == 0).all():
+                    # 当前分类与上一话段分类一样，先不写，入队列
+                    if paragraph.question.category_id == previous_category_id:
+                        logger.info('same category id, put %s into queue',
+                                    paragraph.paragraph_id)
+                        self.queue.put(paragraph)
                         continue
-                    if reply.is_question():
-                        test_line = result_pattern.format('Q',  question_num, reply.content)
-                        result_line = result_pattern.format('Q',
-                                                            question_num,  'F')
-                        result_lines.append(result_line)
-                        question_num += 1
-                    else:
-                        test_line = result_pattern.format('A',  answer_num,  reply.content)
-                        answer_num += 1
-                    test_lines.append(test_line)
-                test_lines.append('\n')
-                test_set.writelines([s for s in test_lines])
-                result.writelines([s for s in result_lines])
+                    paragraph_lines, result_lines = self.generate_paragraph(paragraph)
+                    paragraph_lines.append('\n')
+                    data_set.writelines(paragraph_lines)
+                    result.writelines(result_lines)
+                    previous_category_id = paragraph.question.category_id
+                    # 看队列头是否能写
+                    if not self.queue.empty():
+                        paragraph_in_queue = self.queue.get()
+                        if paragraph_in_queue.question.category_id == previous_category_id:
+                            logger.info('same category id again, put %s into queue', paragraph_in_queue.paragraph_id)
+                            self.queue.put(paragraph_in_queue)
+                        else:
+                            logger.info('dequeue')
+                            paragraph_lines, result_lines = self.generate_paragraph(paragraph_in_queue)
+                            paragraph_lines.append('\n')
+                            data_set.writelines(paragraph_lines)
+                            result.writelines(result_lines)
+                            previous_category_id = paragraph_in_queue.question.category_id
+                while not self.queue.empty():
+                    paragraph_in_queue = self.queue.get()
+                    paragraph_lines, result_lines = self.generate_paragraph(paragraph_in_queue)
+                    paragraph_lines.append('\n')
+                    data_set.writelines(paragraph_lines)
+                    result.writelines(result_lines)
+                logger.info('finished generating data set')
 
 
 def word_similarity(a, b):
@@ -429,7 +461,9 @@ def main(argv):
             show_usage()
             return
         elif opt in ('-t', '--test-set'):
-            generate_test_set()
+            # data_set_generator = DataSetGenerator()
+            # data_set_generator.generate()
+            analyze(u'不知道楼主电脑型号是什么，一般双显卡的笔记本带有调节键，你可以通过切换调节键来切换显卡，如果没有调节键的话，需要系统上调节，桌面点击右键进入“配置可交换显示卡”选项，在切换界面中我们可以看到可供切换的显示核心类型，独显用“高性能GPU”表示，集显用“省电GPU”表示，从界面选项中我们可以看到独显与集显的切换其实也是性能与效能之间爱你的切换，独立提供了强劲的性能但同时功耗也较大，集显虽然性能上与独显还有差距但与其相比功耗却低很多。当用户需要大量图形运算（高清播放、3D游戏）时切换独显可以发挥整机最大性能，当用户需要更长的续航时间和更低的噪音时切换到集显是个不错的注意')
         elif opt in ('-d', '--de-boni'):
             build_word_vector()
             test()
