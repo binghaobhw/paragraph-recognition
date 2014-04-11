@@ -9,6 +9,7 @@
             src="http://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
+<a id='file' href="">Select files</a>
 <div id="container" style="width:100%; height:400px;"></div>
 <div id="container2" style="width:100%; height:400px;"></div>
 <script type='text/javascript'>
@@ -53,7 +54,13 @@
             },
             series: []
         };
-        $.getJSON('data/adjust-threshold.json', function(data) {
+        var selectDialogueLink = $('#file')
+        var fileSelector = $('<input type="file" />');
+        selectDialogueLink.click(function(){
+            fileSelector.click();
+            return false;
+        });
+        $.getJSON('data/adjust-threshold-q-a-0.9.json', function(data) {
             var pFollow = [];
             var rFollow = [];
             var f1Follow = [];
