@@ -9,6 +9,7 @@
             src="http://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
+<div>DIR: <input id="path" type="text" style="width: 50%"/></div>
 <div><input id='file' type='file' multiple/></div>
 <div id="diagrams"></div>
 <script type='text/javascript'>
@@ -51,11 +52,10 @@
             },
             series: []
         };
-
         $('#file').live('change', function() {
             var files = $('#file').prop("files");
             $.map(files, function(val) {
-                var path = 'data/' + val.name;
+                var path = 'file:///' + $('#path').val() + '/' + val.name;
                 var divFollowId = val.name + '.f';
                 var divNewId = val.name + '.n';
                 var divHeader = $('<div>' + val.name + '</div>');

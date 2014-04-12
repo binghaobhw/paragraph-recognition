@@ -65,7 +65,7 @@ def build_word_vector():
 
 def vector_cos(a, b):
     if len(a) != len(b):
-        return None
+        raise ValueError('different length: {}, {}'.format(len(a), len(b)))
     part_up = 0.0
     a_sq = 0.0
     b_sq = 0.0
@@ -75,7 +75,7 @@ def vector_cos(a, b):
         b_sq += b1**2
     part_down = math.sqrt(a_sq*b_sq)
     if part_down == 0.0:
-        return None
+        raise ZeroDivisionError()
     else:
         return part_up / part_down
 
@@ -106,7 +106,7 @@ def analyze(text):
     return response.json()
 
 
-class AnalyzedResult():
+class AnalyzedResult(object):
     def __init__(self, result):
         if isinstance(result, unicode):
             self.json = json.loads(result)
@@ -285,6 +285,70 @@ def word_similarity(a, b):
     return score
 
 
+class CalculatorConfigurator(object):
+    def __init__(self, dict_config):
+        self.dict_config = dict_config
+
+    def config(self):
+        pass
+
+
+class SentenceSimilarityCalculator(object):
+    def __init__(self, word_similarity_calculator):
+        self.word_similarity_calculator = word_similarity_calculator
+
+    def calculate(self, text_a, text_b):
+        score = 0.0
+        text_a_len = 0
+        for word in text_a.words_exclude_stop():
+            text_a_len += 1
+            word_cont = word['cont']
+            # word similarity
+            max_word_score = 0.0
+            for word_to_compare in text_b.words_exclude_stop():
+                word_score = self.word_similarity_calculator.calculate(
+                    word_cont, word_to_compare['cont'])
+                if max_word_score < word_score:
+                    max_word_score = word_score
+            score += max_word_score
+        if text_a_len != 0:
+            score /= text_a_len
+        logger.debug('sentence score=%s', score)
+        return score
+
+
+class WordSimilarityCalculator(object):
+    def __init__(self):
+        pass
+
+    def calculate(self, word_a, word_b):
+        pass
+
+
+class HowNetCalculator(WordSimilarityCalculator):
+    def __init__(self, word_similarity_table):
+        self.word_similarity_table = word_similarity_table
+
+    def calculate(self, word_a, word_b):
+        score = 0.0
+        key = word_a, word_b
+        if key in self.word_similarity_table:
+            score = self.word_similarity_table[key]
+        return score
+
+
+class WordEmbeddingCalculator(WordSimilarityCalculator):
+    def __init__(self, word_vectors):
+        self.word_vectors = word_vectors
+
+    def calculate(self, word_a, word_b):
+        score = 0.0
+        if word_a in self.word_vectors and word_b in self.word_vectors:
+            raw_score = vector_cos(self.word_vectors[word_a], self.word_vectors[word_b])
+            score = (raw_score + 1) / 2
+        return score
+
+
 def sentence_similarity(text, text_list):
     # sentence similarity
     max_sentence_score = 0.0
@@ -312,7 +376,7 @@ def sentence_similarity(text, text_list):
     return max_sentence_score
 
 
-class AbstractAlgorithm():
+class AbstractAlgorithm(object):
     def is_follow_up(self, question, history_questions, previous_answer):
         pass
 
@@ -479,10 +543,10 @@ def main(argv):
             evaluation()
         elif opt in ('-a', '--adjust-threshold'):
             build_word_vector()
-            for x in range(0, 11, 1):
-                threshold = x / 10.0
-                adjust_threshold(q_a_threshold=threshold)
-
+            # for x in range(0, 11, 1):
+            #     threshold = x / 10.0
+            #     adjust_threshold(q_a_threshold=threshold)
+            adjust_threshold()
 
 
 if __name__ == '__main__':
