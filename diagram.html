@@ -9,17 +9,15 @@
             src="http://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
-<a id='file' href="">Select files</a>
-<div id="container" style="width:100%; height:400px;"></div>
-<div id="container2" style="width:100%; height:400px;"></div>
+<div><input id='file' type='file' multiple/></div>
+<div id="diagrams"></div>
 <script type='text/javascript'>
     $(document).ready(function() {
-        var options = {
+        var followOptions = {
             title: {
                 text: 'Follow'
             },
             chart: {
-                renderTo: 'container',
                 type: 'line'
             },
             xAxis: {
@@ -34,12 +32,11 @@
             },
             series: []
         };
-        var options2 = {
+        var newOptions = {
             title: {
                 text: 'New'
             },
             chart: {
-                renderTo: 'container2',
                 type: 'line'
             },
             xAxis: {
@@ -54,36 +51,46 @@
             },
             series: []
         };
-        var selectDialogueLink = $('#file')
-        var fileSelector = $('<input type="file" />');
-        selectDialogueLink.click(function(){
-            fileSelector.click();
-            return false;
-        });
-        $.getJSON('data/adjust-threshold-q-a-0.9.json', function(data) {
-            var pFollow = [];
-            var rFollow = [];
-            var f1Follow = [];
-            var pNew = [];
-            var rNew = [];
-            var f1New = [];
-            for(var i = 0; i < data.length; i++) {
-                pFollow.push([data[i].threshold, data[i].result.F.P]);
-                rFollow.push([data[i].threshold, data[i].result.F.R]);
-                f1Follow.push([data[i].threshold, data[i].result.F.F1]);
-                pNew.push([data[i].threshold, data[i].result.N.P]);
-                rNew.push([data[i].threshold, data[i].result.N.R]);
-                f1New.push([data[i].threshold, data[i].result.N.F1]);
-            }
-            options.series.push({name: 'P', data: pFollow},
-                    {name: 'R', data: rFollow}, {name: 'F1', data: f1Follow});
-            options2.series.push({name: 'P', data: pNew},
-                    {name: 'R', data: rNew}, {name: 'F1', data: f1New});
-            var chart = new Highcharts.Chart(options);
-            var chart2 = new Highcharts.Chart(options2);
-        });
 
+        $('#file').live('change', function() {
+            var files = $('#file').prop("files");
+            $.map(files, function(val) {
+                var path = 'data/' + val.name;
+                var divFollowId = val.name + '.f';
+                var divNewId = val.name + '.n';
+                var divHeader = $('<div>' + val.name + '</div>');
+                var divFollow = $('<div id="' + divFollowId + '", sty' + 'le="width:50%; float: left">');
+                var divNew= $('<div id="' + divNewId + '", style="width:50%; float: left">');
+                $("#diagrams").append(divHeader, divFollow, divNew);
+
+                $.getJSON(path, function(data) {
+                    var pFollow = [];
+                    var rFollow = [];
+                    var f1Follow = [];
+                    var pNew = [];
+                    var rNew = [];
+                    var f1New = [];
+                    for(var i = 0; i < data.length; i++) {
+                        pFollow.push([data[i].threshold, data[i].result.F.P]);
+                        rFollow.push([data[i].threshold, data[i].result.F.R]);
+                        f1Follow.push([data[i].threshold, data[i].result.F.F1]);
+                        pNew.push([data[i].threshold, data[i].result.N.P]);
+                        rNew.push([data[i].threshold, data[i].result.N.R]);
+                        f1New.push([data[i].threshold, data[i].result.N.F1]);
+                    }
+                    followOptions.series = []
+                    followOptions.series.push({name: 'P', data: pFollow},
+                            {name: 'R', data: rFollow}, {name: 'F1', data: f1Follow});
+                    newOptions.series = []
+                    newOptions.series.push({name: 'P', data: pNew},
+                            {name: 'R', data: rNew}, {name: 'F1', data: f1New});
+                    divFollow.highcharts(followOptions);
+                    divNew.highcharts(newOptions);
+                });
+            });
+        });
     });
 </script>
+
 </body>
 </html>

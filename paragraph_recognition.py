@@ -29,6 +29,9 @@ param = {'api_key': API_KEY,
 
 WORD_VECTOR = {}
 
+PUNCTUATION_TABLE = [u' ', u'.', u'。', u',', u'，', u'!', u'！', u';', u'；',
+                     u'﹖', u'?', u'？', u'～', u'~']
+
 THIRD_PERSON_PRONOUN_DICT = dict.fromkeys([u'他', u'她', u'它', u'他们',
                                            u'她们', u'它们',])
 
@@ -83,11 +86,11 @@ def build_param(text):
 
 
 def truncate(text):
-    split = text.split(' ', 1)
-    if len(split) == 1:
-        logger.error('no separator')
-        return text[:50]
-    return split[0]
+    for punctuation in PUNCTUATION_TABLE:
+        index = text.find(punctuation)
+        if 0 < index < 50:
+            return text[:index]
+    return text[:50]
 
 
 def analyze(text):
@@ -302,7 +305,7 @@ def sentence_similarity(text, text_list):
                 sentence_score += max_word_score
             if sentence_len != 0:
                 sentence_score /= sentence_len
-            logger.info('sentence score=%s', sentence_score)
+            logger.debug('sentence score=%s', sentence_score)
             if max_sentence_score < sentence_score:
                 max_sentence_score = sentence_score
     logger.info('max sentence score=%s', max_sentence_score)
@@ -402,14 +405,20 @@ def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
     if q_a_threshold is not None and q_q_threshold is not None:
         raise RuntimeError('no more than 1 threshold given but 2')
     de_boni = DeBoni()
+    # 调参方式 0-两个都调 1-调q_q 2-调q_a
     scheme = 0
+    output_name = 'data/adjust-threshold-both.json'
     if q_a_threshold is not None:
+        # q_a_threshold固定
         scheme += 1
+        output_name = 'data/adjust-threshold-q-a-{}.json'.format(q_a_threshold)
         logger.info('set constant question-answer similarity threshold=%s',
                     q_a_threshold)
         de_boni.set_q_a_threshold(q_a_threshold)
     if q_q_threshold is not None:
+        # q_q_threshold固定
         scheme += 2
+        output_name = 'data/adjust-threshold-q-q-{}.json'.format(q_q_threshold)
         logger.info('set constant question-question similarity threshold=%s',
                     q_q_threshold)
         de_boni.set_q_q_threshold(q_q_threshold)
@@ -440,8 +449,8 @@ def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
         else:
             test(de_boni, file_name=file_name)
         evaluation_result = evaluation(file_name=file_name)
-        result.append({'threshold': q_q_threshold, 'result': evaluation_result})
-    with codecs.open('data/adjust-threshold-q-a-{}.json'.format(q_a_threshold), encoding='utf-8', mode='wb') as f:
+        result.append({'threshold': threshold, 'result': evaluation_result})
+    with codecs.open(output_name, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
 
 
@@ -461,9 +470,8 @@ def main(argv):
             show_usage()
             return
         elif opt in ('-t', '--test-set'):
-            # data_set_generator = DataSetGenerator()
-            # data_set_generator.generate()
-            analyze(u'不知道楼主电脑型号是什么，一般双显卡的笔记本带有调节键，你可以通过切换调节键来切换显卡，如果没有调节键的话，需要系统上调节，桌面点击右键进入“配置可交换显示卡”选项，在切换界面中我们可以看到可供切换的显示核心类型，独显用“高性能GPU”表示，集显用“省电GPU”表示，从界面选项中我们可以看到独显与集显的切换其实也是性能与效能之间爱你的切换，独立提供了强劲的性能但同时功耗也较大，集显虽然性能上与独显还有差距但与其相比功耗却低很多。当用户需要大量图形运算（高清播放、3D游戏）时切换独显可以发挥整机最大性能，当用户需要更长的续航时间和更低的噪音时切换到集显是个不错的注意')
+            data_set_generator = DataSetGenerator()
+            data_set_generator.generate()
         elif opt in ('-d', '--de-boni'):
             build_word_vector()
             test()
@@ -471,7 +479,10 @@ def main(argv):
             evaluation()
         elif opt in ('-a', '--adjust-threshold'):
             build_word_vector()
-            adjust_threshold(q_a_threshold=0.8)
+            for x in range(0, 11, 1):
+                threshold = x / 10.0
+                adjust_threshold(q_a_threshold=threshold)
+
 
 
 if __name__ == '__main__':
