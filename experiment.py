@@ -6,6 +6,7 @@ import getopt
 import hashlib
 import json
 import logging
+import logging.config
 import os
 import sys
 import requests
@@ -49,10 +50,13 @@ def truncate(text):
 def analyze(text):
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
     if not response.ok:
-        if response.status_code == 400 and response.json()['error_message'] == 'SENTENCE TOO LONG':
+        if response.status_code == 400 and \
+                response.json()['error_message'] == 'SENTENCE TOO LONG':
             logger.info('sentence too long, truncate')
             truncated_text = truncate(text)
-            response = requests.get(LTP_URL, params=build_param(truncated_text), timeout=60)
+            response = requests.get(LTP_URL,
+                                    params=build_param(truncated_text),
+                                    timeout=60)
         else:
             raise RuntimeError('bad response code={} url={} text={}'.format(
                 response.status_code, response.url, response.text))
@@ -66,9 +70,9 @@ def save_analyzed_result(md5_string, result_json):
     logger.info('start to insert ltp result, md5=%s', md5_string)
     try:
         Session.commit()
-    except:
+    except Exception:
         Session.rollback()
-        logger.error('fail to insert')
+        logger.error('fail to insert', exc_info=True)
     logger.info('finished inserting ltp result')
 
 
@@ -83,7 +87,8 @@ def get_analyzed_result(question_text):
         try:
             result_json = analyze(question_text)
         except RuntimeError:
-            logger.error('fail to invoke ltp api, text=%s', question_text, exc_info=True)
+            logger.error('fail to invoke ltp api, text=%s', question_text,
+                         exc_info=True)
             raise RuntimeError()
 
         save_analyzed_result(md5_string, result_json)
@@ -94,7 +99,7 @@ def get_analyzed_result(question_text):
 def build_essentials(path):
     file_dict = {
         'third_person_pronoun_dict': path + '/third-person-pronoun.txt',
-        'demonstrative_pronoun_dict': path + '/demonstrative-pronoun-dict.txt',
+        'demonstrative_pronoun_dict': path + '/demonstrative-pronoun.txt',
         'cue_word_dict': path + '/cue-word.txt',
         'stop_word_dict': path + '/stop-word.txt'
     }
@@ -123,32 +128,33 @@ def build_word_embedding_vectors():
 def test(method, file_name='data/predicted-result.txt'):
     with codecs.open('data/test-set.txt', encoding='utf-8') as test_set, \
             codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
-            logger.info('start to test all')
-            history_questions = []
-            previous_answer_text = None
+        logger.info('start to test all')
+        history_questions = []
+        previous_answer_text = None
+        last_is_answer = False
+        for line in test_set:
+            line = line.strip()
+            if line == '':
+                continue
+            if line.startswith('A'):
+                previous_answer_text = line.split(':', 1)[1]
+                last_is_answer = True
+                continue
+            [prefix, question_text] = line.split(':', 1)
+            question = get_analyzed_result(question_text)
+            previous_answer = get_analyzed_result(previous_answer_text) \
+                if last_is_answer else None
             last_is_answer = False
-            for line in test_set:
-                line = line.strip()
-                if line == '':
-                    continue
-                if line.startswith('A'):
-                    previous_answer_text = line.split(':', 1)[1]
-                    last_is_answer = True
-                    continue
-                [prefix, question_text] = line.split(':', 1)
-                question = get_analyzed_result(question_text)
-                previous_answer = get_analyzed_result(previous_answer_text) \
-                    if last_is_answer else None
-                last_is_answer = False
-                result = 'F'
-                logger.info('start to test %s', prefix)
-                if not method.is_follow_up(question, history_questions, previous_answer):
-                    result = 'N'
-                    history_questions = []
-                logger.info('finished testing %s', prefix)
-                result_file.write('{}:{}\n'.format(prefix, result))
-                history_questions.append(question)
-            logger.info('finished testing all')
+            result = 'F'
+            logger.info('start to test %s', prefix)
+            if not method.is_follow_up(question, history_questions,
+                                       previous_answer):
+                result = 'N'
+                history_questions = []
+            logger.info('finished testing %s', prefix)
+            result_file.write('{}:{}\n'.format(prefix, result))
+            history_questions.append(question)
+        logger.info('finished testing all')
 
 
 def evaluation(file_name='data/predicted-result.txt'):
@@ -189,14 +195,14 @@ def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
         output_name = 'data/adjust-threshold-q-a-{}.json'.format(q_a_threshold)
         logger.info('set constant question-answer similarity threshold=%s',
                     q_a_threshold)
-        method.set_q_a_threshold(q_a_threshold)
+        method.q_a_threshold = q_a_threshold
     if q_q_threshold is not None:
         # q_q_threshold固定
         scheme += 2
         output_name = 'data/adjust-threshold-q-q-{}.json'.format(q_q_threshold)
         logger.info('set constant question-question similarity threshold=%s',
                     q_q_threshold)
-        method.set_q_q_threshold(q_q_threshold)
+        method.q_q_threshold = q_q_threshold
     result = []
     for x in range(0, 11, 1):
         threshold = x / 10.0
@@ -204,21 +210,21 @@ def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
         if scheme == 1:
             logger.info('set question-question similarity thresholds=%s',
                         threshold)
-            method.set_q_q_threshold(threshold)
+            method.q_q_threshold = threshold
             file_name = 'data/q-q-{}-q-a-{}.txt'.format(threshold,
                                                         q_a_threshold)
         # q_q_threshold固定
         elif scheme == 2:
             logger.info('set question-answer similarity thresholds=%s',
                         threshold)
-            method.set_q_a_threshold(threshold)
+            method.q_a_threshold = threshold
             file_name = 'data/q-q-{}-q-a-{}.txt'.format(q_q_threshold,
                                                         threshold)
         else:
             logger.info('set all similarity thresholds=%s',
                         threshold)
-            method.set_q_a_threshold(threshold)
-            method.set_q_q_threshold(threshold)
+            method.q_a_threshold = threshold
+            method.q_q_threshold = threshold
             file_name = 'data/q-q-{0}-q-a-{0}.txt'.format(threshold)
         if os.path.isfile(file_name):
             logger.info('%s exists', file_name)
@@ -345,10 +351,6 @@ def main(argv):
                     'stop_word_dict': essentials['stop_word_dict'],
                 },
                 'word_similarity_calculators': {
-                    'how_net': {
-                        'class': 'HowNetCalculator',
-                        'word_similarity_table': None
-                    },
                     'word_embedding': {
                         'class': 'WordEmbeddingCalculator',
                         'word_embedding_vectors': word_embedding_vectors
@@ -358,7 +360,7 @@ def main(argv):
                     'de_boni': {
                         'class': 'DeBoni',
                         'sentence_similarity_calculator': {
-                            'word_similarity_calculator': 'how_net'
+                            'word_similarity_calculator': 'word_embedding'
                         }
                     }
                 }

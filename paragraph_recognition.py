@@ -20,6 +20,7 @@ ESSENTIALS_DICT = {'third_person_pronoun_dict': THIRD_PERSON_PRONOUN_DICT,
 word_similarity_calculators = {}
 methods = {}
 
+
 def vector_cos(a, b):
     if len(a) != len(b):
         raise ValueError('different length: {}, {}'.format(len(a), len(b)))
@@ -185,12 +186,6 @@ class DeBoni(AbstractMethod):
         self.q_q_threshold = 0.5
         self.q_a_threshold = 0.5
 
-    def set_q_q_threshold(self, q_q_threshol):
-        self.q_q_threshold = q_q_threshol
-
-    def set_q_a_threshold(self, q_a_threshol):
-        self.q_a_threshold = q_a_threshol
-
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
         if question.has_pronoun() or question.has_cue_word() or \
@@ -206,7 +201,7 @@ class DeBoni(AbstractMethod):
         max_sentence_score = 0.0
         for history_question in history_questions:
             score = self.sentence_similarity_calculator.calculate(
-                    question, history_question)
+                question, history_question)
             if max_sentence_score < score:
                 max_sentence_score = score
         logger.info('max sentence score: %s', max_sentence_score)
@@ -244,9 +239,10 @@ class Configurator(object):
         for name in config:
             inner_config = config[name]
             class_name = inner_config['class']
-            clazz = self.resolve(class_name)
-            kwargs = dict([(k, inner_config[k]) for k in inner_config])
-            word_similarity_calculators[name] = clazz(**kwargs)
+            class_ = self.resolve(class_name)
+            kwargs = dict([(k, inner_config[k]) for k in inner_config if
+                           k != 'class'])
+            word_similarity_calculators[name] = class_(**kwargs)
 
     def configure_method(self):
         config = self.dict_config['method']
