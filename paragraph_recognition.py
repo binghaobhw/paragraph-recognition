@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
+import json
 import logging
 import math
 import sys
 
-logger = logging.getLogger('paragraph_recognition')
+logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
 
 THIRD_PERSON_PRONOUN_DICT = {}
@@ -39,7 +40,7 @@ def vector_cos(a, b):
 class AnalyzedSentence(object):
     def __init__(self, sentence):
         if isinstance(sentence, unicode):
-            self.json = sentence.loads(sentence)
+            self.json = json.loads(sentence)
         elif isinstance(sentence, list):
             self.json = sentence
         else:
@@ -192,15 +193,11 @@ class DeBoni(AbstractMethod):
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
-        if question.has_pronoun() \
-                or question.has_cue_word() \
-                or (history_questions is not None
-                    and len(history_questions) > 0
-                    and self.max_sentence_similarity(
-                            question, history_questions) > self.q_q_threshold) \
-                or (previous_answer is not None
-                    and self.sentence_similarity_calculator.calculate(
-                            question, previous_answer) > self.q_a_threshold):
+        if question.has_pronoun() or question.has_cue_word() or \
+                (history_questions and self.max_sentence_similarity(
+                    question, history_questions) > self.q_q_threshold) or \
+                (previous_answer and self.sentence_similarity_calculator.
+                    calculate(question, previous_answer) > self.q_a_threshold):
             follow_up = True
         return follow_up
 
@@ -208,7 +205,8 @@ class DeBoni(AbstractMethod):
         # sentence similarity
         max_sentence_score = 0.0
         for history_question in history_questions:
-            score = self.sentence_similarity_calculator.calculate(question, history_question)
+            score = self.sentence_similarity_calculator.calculate(
+                    question, history_question)
             if max_sentence_score < score:
                 max_sentence_score = score
         logger.info('max sentence score: %s', max_sentence_score)
@@ -241,7 +239,6 @@ class Configurator(object):
         for k, v in config.items():
             ESSENTIALS_DICT[k] = v
 
-
     def configure_word_similarity_calculator(self):
         config = self.dict_config['word_similarity_calculators']
         for name in config:
@@ -257,9 +254,12 @@ class Configurator(object):
             inner_config = config[name]
             class_name = inner_config['class']
             clazz = self.resolve(class_name)
-            word_similarity_calculator_name = inner_config['sentence_similarity_calculator']['word_similarity_calculator']
-            word_similarity_calculator = word_similarity_calculators[word_similarity_calculator_name]
-            sentence_similarity_calculator = SentenceSimilarityCalculator(word_similarity_calculator)
+            word_similarity_calculator_name = inner_config[
+                'sentence_similarity_calculator']['word_similarity_calculator']
+            word_similarity_calculator = word_similarity_calculators[
+                word_similarity_calculator_name]
+            sentence_similarity_calculator = SentenceSimilarityCalculator(
+                word_similarity_calculator)
             methods[name] = clazz(sentence_similarity_calculator)
 
     @staticmethod

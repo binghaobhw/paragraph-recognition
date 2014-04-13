@@ -14,7 +14,7 @@ from log_config import LOG_PROJECT_NAME, LOGGING
 from paragraph_recognition import AnalyzedSentence
 import paragraph_recognition
 
-logger = logging.getLogger(LOG_PROJECT_NAME + '.paragraph_recognition')
+logger = logging.getLogger(LOG_PROJECT_NAME + '.experiment')
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
 API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
 FORMAT = 'json'
@@ -106,7 +106,7 @@ def build_essentials(path):
 
 
 def build_word_embedding_vectors():
-    with codecs.open('data/baike-50.vec.txt', encoding='utf-8', mode='rb') as f:
+    with codecs.open('data/baike-50.vec.txt', encoding='utf-8') as f:
         word_embedding_vectors = {}
         logger.info('start to build word vector')
         f.next()
@@ -121,8 +121,8 @@ def build_word_embedding_vectors():
 
 
 def test(method, file_name='data/predicted-result.txt'):
-    with codecs.open('data/test-set.txt', encoding='utf-8', mode='rb') as test_set:
-        with codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
+    with codecs.open('data/test-set.txt', encoding='utf-8') as test_set, \
+            codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
             logger.info('start to test all')
             history_questions = []
             previous_answer_text = None
@@ -152,28 +152,28 @@ def test(method, file_name='data/predicted-result.txt'):
 
 
 def evaluation(file_name='data/predicted-result.txt'):
-    with codecs.open('data/actual-result.txt', encoding='utf-8', mode='rb') as actual:
-        with codecs.open(file_name, encoding='utf-8', mode='rb') as predicted:
-            result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
-                      'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
-            new = result['N']
-            follow = result['F']
-            for predicted_line in predicted:
-                predicted_line = predicted_line.strip()
-                actual_line = actual.next()
-                actual_line = actual_line.strip()
+    with codecs.open('data/actual-result.txt', encoding='utf-8') as actual, \
+            codecs.open(file_name, encoding='utf-8') as predicted:
+        result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+                  'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
+        new = result['N']
+        follow = result['F']
+        for predicted_line in predicted:
+            predicted_line = predicted_line.strip()
+            actual_line = actual.next()
+            actual_line = actual_line.strip()
 
-                result[predicted_line[-1]][actual_line[-1]] += 1
+            result[predicted_line[-1]][actual_line[-1]] += 1
 
-            new['P'] = float(new['N']) / (new['N'] + new['F'])
-            new['R'] = float(new['N']) / (new['N'] + follow['N'])
-            new['F1'] = 2 * new['P'] * new['R'] / (new['P'] + new['R'])
+        new['P'] = float(new['N']) / (new['N']+new['F'])
+        new['R'] = float(new['N']) / (new['N']+follow['N'])
+        new['F1'] = (2*new['P']*new['R']) / (new['P']+new['R'])
 
-            follow['P'] = float(follow['F']) / (follow['F'] + follow['N'])
-            follow['R'] = float(follow['F']) / (follow['F'] + new['F'])
-            follow['F1'] = 2 * follow['P'] * follow['R'] / (follow['P'] + follow['R'])
+        follow['P'] = float(follow['F']) / (follow['F']+follow['N'])
+        follow['R'] = float(follow['F']) / (follow['F']+new['F'])
+        follow['F1'] = (2*follow['P']*follow['R']) / (follow['P']+follow['R'])
 
-            return result
+        return result
 
 
 def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
@@ -205,7 +205,8 @@ def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
             logger.info('set question-question similarity thresholds=%s',
                         threshold)
             method.set_q_q_threshold(threshold)
-            file_name = 'data/q-q-{}-q-a-{}.txt'.format(threshold, q_a_threshold)
+            file_name = 'data/q-q-{}-q-a-{}.txt'.format(threshold,
+                                                        q_a_threshold)
         # q_q_threshold固定
         elif scheme == 2:
             logger.info('set question-answer similarity thresholds=%s',
@@ -240,60 +241,74 @@ class DataSetGenerator():
         self.result_file_name = result_file_name
 
     def generate_paragraph(self, paragraph):
-        paragraph_lines = [self.result_pattern.format('Q', self.question_num, paragraph.question.title)]
-        result_lines = [self.result_pattern.format('Q', self.question_num, 'N')]
+        paragraph_lines = [self.result_pattern.format(
+            'Q', self.question_num,  paragraph.question.title)]
+        result_lines = [self.result_pattern.format('Q', self.question_num,
+                                                   'N')]
         self.question_num += 1
         for reply in paragraph.replies:
             if reply.is_deleted == 1:
                 continue
             if reply.is_question():
-                test_line = self.result_pattern.format('Q',  self.question_num, reply.content)
-                result_line = self.result_pattern.format('Q', self.question_num, 'F')
+                test_line = self.result_pattern.format('Q',  self.question_num,
+                                                       reply.content)
+                result_line = self.result_pattern.format(
+                    'Q', self.question_num, 'F')
                 result_lines.append(result_line)
                 self.question_num += 1
             else:
-                test_line = self.result_pattern.format('A', self.answer_num, reply.content)
+                test_line = self.result_pattern.format('A', self.answer_num,
+                                                       reply.content)
                 self.answer_num += 1
             paragraph_lines.append(test_line)
         return paragraph_lines, result_lines
 
     def generate(self):
         previous_category_id = None
-        with codecs.open(self.data_set_file_name, encoding='utf-8', mode='wb') as data_set:
-            with codecs.open(self.result_file_name, encoding='utf-8', mode='wb') as result:
-                logger.info('start to generate data set')
-                for paragraph in Session.query(Paragraph).filter(Paragraph.paragraph_id <= 500).filter(Paragraph.is_deleted == 0).all():
-                    # 当前分类与上一话段分类一样，先不写，入队列
-                    if paragraph.question.category_id == previous_category_id:
-                        logger.info('same category id, put %s into queue',
-                                    paragraph.paragraph_id)
-                        self.queue.put(paragraph)
-                        continue
-                    paragraph_lines, result_lines = self.generate_paragraph(paragraph)
-                    paragraph_lines.append('\n')
-                    data_set.writelines(paragraph_lines)
-                    result.writelines(result_lines)
-                    previous_category_id = paragraph.question.category_id
-                    # 看队列头是否能写
-                    if not self.queue.empty():
-                        paragraph_in_queue = self.queue.get()
-                        if paragraph_in_queue.question.category_id == previous_category_id:
-                            logger.info('same category id again, put %s into queue', paragraph_in_queue.paragraph_id)
-                            self.queue.put(paragraph_in_queue)
-                        else:
-                            logger.info('dequeue')
-                            paragraph_lines, result_lines = self.generate_paragraph(paragraph_in_queue)
-                            paragraph_lines.append('\n')
-                            data_set.writelines(paragraph_lines)
-                            result.writelines(result_lines)
-                            previous_category_id = paragraph_in_queue.question.category_id
-                while not self.queue.empty():
+        with codecs.open(self.data_set_file_name, encoding='utf-8',
+                         mode='wb') as data_set, codecs.open(
+                self.result_file_name, encoding='utf-8', mode='wb') as result:
+            logger.info('start to generate data set')
+            for paragraph in Session.query(Paragraph).filter(
+                    Paragraph.paragraph_id <= 500).filter(
+                        Paragraph.is_deleted == 0).all():
+                # 当前分类与上一话段分类一样，先不写，入队列
+                if paragraph.question.category_id == previous_category_id:
+                    logger.info('same category id, put %s into queue',
+                                paragraph.paragraph_id)
+                    self.queue.put(paragraph)
+                    continue
+                paragraph_lines, result_lines = self.generate_paragraph(
+                    paragraph)
+                paragraph_lines.append('\n')
+                data_set.writelines(paragraph_lines)
+                result.writelines(result_lines)
+                previous_category_id = paragraph.question.category_id
+                # 看队列头是否能写
+                if not self.queue.empty():
                     paragraph_in_queue = self.queue.get()
-                    paragraph_lines, result_lines = self.generate_paragraph(paragraph_in_queue)
-                    paragraph_lines.append('\n')
-                    data_set.writelines(paragraph_lines)
-                    result.writelines(result_lines)
-                logger.info('finished generating data set')
+                    if paragraph_in_queue.question.category_id == \
+                            previous_category_id:
+                        logger.info('same category id again, put %s into '
+                                    'queue', paragraph_in_queue.paragraph_id)
+                        self.queue.put(paragraph_in_queue)
+                    else:
+                        logger.info('dequeue')
+                        paragraph_lines, result_lines = self.\
+                            generate_paragraph(paragraph_in_queue)
+                        paragraph_lines.append('\n')
+                        data_set.writelines(paragraph_lines)
+                        result.writelines(result_lines)
+                        previous_category_id = paragraph_in_queue.question.\
+                            category_id
+            while not self.queue.empty():
+                paragraph_in_queue = self.queue.get()
+                paragraph_lines, result_lines = self.generate_paragraph(
+                    paragraph_in_queue)
+                paragraph_lines.append('\n')
+                data_set.writelines(paragraph_lines)
+                result.writelines(result_lines)
+            logger.info('finished generating data set')
 
 
 def show_usage():
