@@ -9,6 +9,7 @@ import logging
 import logging.config
 import os
 import sys
+import re
 import requests
 from data_access import Session, LtpResult, Paragraph
 from log_config import LOG_PROJECT_NAME, LOGGING
@@ -82,7 +83,7 @@ def get_analyzed_result(question_text):
     md5_string = md5(question_text)
     ltp_result = Session.query(LtpResult).filter_by(md5=md5_string).first()
     if ltp_result is not None:
-        analyzed_result = AnalyzedSentence(ltp_result.json_text)
+        analyzed_result = AnalyzedSentence(md5_string, ltp_result.json_text)
     else:
         try:
             result_json = analyze(question_text)
@@ -92,7 +93,7 @@ def get_analyzed_result(question_text):
             raise RuntimeError()
 
         save_analyzed_result(md5_string, result_json)
-        analyzed_result = AnalyzedSentence(result_json)
+        analyzed_result = AnalyzedSentence(md5_string, result_json)
     return analyzed_result
 
 
@@ -111,9 +112,11 @@ def build_essentials(path):
 
 
 def build_word_embedding_vectors():
-    with codecs.open('data/baike-50.vec.txt', encoding='utf-8') as f:
+    word_embedding_vectors_file = 'data/baike-50.vec.txt'
+    with codecs.open(word_embedding_vectors_file, encoding='utf-8') as f:
         word_embedding_vectors = {}
-        logger.info('start to build word vector')
+        logger.info('start to build word vector from %s',
+                    word_embedding_vectors_file)
         f.next()
         for line in f:
             line = line.strip()
@@ -122,7 +125,8 @@ def build_word_embedding_vectors():
             vector = [float(num_text) for num_text in columns[1:]]
             word_embedding_vectors[word] = vector
         logger.info('finished building word vector')
-        return word_embedding_vectors
+
+    return word_embedding_vectors
 
 
 def test(method, file_name='data/predicted-result.txt'):
@@ -157,8 +161,9 @@ def test(method, file_name='data/predicted-result.txt'):
         logger.info('finished testing all')
 
 
-def evaluation(file_name='data/predicted-result.txt'):
-    with codecs.open('data/actual-result.txt', encoding='utf-8') as actual, \
+def evaluation(file_name):
+    answer_file_name = 'data/actual-result.txt'
+    with codecs.open(answer_file_name, encoding='utf-8') as actual, \
             codecs.open(file_name, encoding='utf-8') as predicted:
         result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
                   'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
@@ -168,64 +173,69 @@ def evaluation(file_name='data/predicted-result.txt'):
             predicted_line = predicted_line.strip()
             actual_line = actual.next()
             actual_line = actual_line.strip()
-
             result[predicted_line[-1]][actual_line[-1]] += 1
-
-        new['P'] = float(new['N']) / (new['N']+new['F'])
-        new['R'] = float(new['N']) / (new['N']+follow['N'])
-        new['F1'] = (2*new['P']*new['R']) / (new['P']+new['R'])
-
-        follow['P'] = float(follow['F']) / (follow['F']+follow['N'])
-        follow['R'] = float(follow['F']) / (follow['F']+new['F'])
-        follow['F1'] = (2*follow['P']*follow['R']) / (follow['P']+follow['R'])
-
-        return result
+        new['P'] = ratio(new['N'], new['F'])
+        new['R'] = ratio(new['N'], follow['N'])
+        new['F1'] = 2*new['R']*ratio(new['P'], new['R'])
+        follow['P'] = ratio(follow['F'], follow['N'])
+        follow['R'] = ratio(follow['F'], new['F'])
+        follow['F1'] = 2*follow['R']*ratio(follow['P'], follow['R'])
+    return result
 
 
-def adjust_threshold(q_a_threshold=None, q_q_threshold=None):
+def ratio(a, b):
+    total = a+b
+    if total == 0:
+        return 0.0
+    return float(a) / total
+
+
+def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
     if q_a_threshold is not None and q_q_threshold is not None:
         raise RuntimeError('no more than 1 threshold given but 2')
     method = paragraph_recognition.get_method('de_boni')
     # 调参方式 0-两个都调 1-调q_q 2-调q_a
     scheme = 0
-    output_name = 'data/adjust-threshold-both.json'
+    output_name = '{}/adjust-threshold-both.json'.format(path)
     if q_a_threshold is not None:
         # q_a_threshold固定
         scheme += 1
-        output_name = 'data/adjust-threshold-q-a-{}.json'.format(q_a_threshold)
+        output_name = '{}/adjust-threshold-q-a-{}.json'.format(path,
+                                                               q_a_threshold)
         logger.info('set constant question-answer similarity threshold=%s',
                     q_a_threshold)
         method.q_a_threshold = q_a_threshold
     if q_q_threshold is not None:
         # q_q_threshold固定
         scheme += 2
-        output_name = 'data/adjust-threshold-q-q-{}.json'.format(q_q_threshold)
+        output_name = '{}/adjust-threshold-q-q-{}.json'.format(path,
+                                                               q_q_threshold)
         logger.info('set constant question-question similarity threshold=%s',
                     q_q_threshold)
         method.q_q_threshold = q_q_threshold
     result = []
-    for x in range(0, 11, 1):
-        threshold = x / 10.0
+    for x in range(80, 100, 1):
+        threshold = x / 100.0
         # q_a_threshold固定
         if scheme == 1:
             logger.info('set question-question similarity thresholds=%s',
                         threshold)
             method.q_q_threshold = threshold
-            file_name = 'data/q-q-{}-q-a-{}.txt'.format(threshold,
-                                                        q_a_threshold)
+            file_name = '{}/q-q-{}-q-a-{}.txt'.format(path, threshold,
+                                                      q_a_threshold)
         # q_q_threshold固定
         elif scheme == 2:
             logger.info('set question-answer similarity thresholds=%s',
                         threshold)
             method.q_a_threshold = threshold
-            file_name = 'data/q-q-{}-q-a-{}.txt'.format(q_q_threshold,
-                                                        threshold)
+            file_name = '{}/q-q-{}-q-a-{}.txt'.format(path, q_q_threshold,
+                                                      threshold)
         else:
             logger.info('set all similarity thresholds=%s',
                         threshold)
             method.q_a_threshold = threshold
             method.q_q_threshold = threshold
-            file_name = 'data/q-q-{0}-q-a-{0}.txt'.format(threshold)
+            file_name = '{0}/q-q-{1}-q-a-{1}.txt'.format(path, threshold)
         if os.path.isfile(file_name):
             logger.info('%s exists', file_name)
         else:
@@ -317,6 +327,18 @@ class DataSetGenerator():
             logger.info('finished generating data set')
 
 
+def adjust_len(path, output):
+    file_list = os.listdir(path)
+    len_dict = dict([(int(re.findall(r'\d+', f)[0]), '{}/{}'.format(path, f))
+                     for f in file_list])
+    result = []
+    for len in sorted(len_dict.keys()):
+        evaluation_result = evaluation(file_name=len_dict[len])
+        result.append({'threshold': len, 'result': evaluation_result})
+    with codecs.open(output, encoding='utf-8', mode='wb') as f:
+        f.write(json.dumps(result))
+
+
 def show_usage():
     pass
 
@@ -336,10 +358,37 @@ def main(argv):
             data_set_generator = DataSetGenerator()
             data_set_generator.generate()
         elif opt in ('-d', '--de-boni'):
-            build_word_embedding_vectors()
-            test()
+            essentials = build_essentials('data')
+            word_embedding_vectors = build_word_embedding_vectors()
+            method_config = {
+                'essentials': {
+                    'third_person_pronoun_dict': essentials['third_person_pronoun_dict'],
+                    'demonstrative_pronoun_dict': essentials['demonstrative_pronoun_dict'],
+                    'cue_word_dict': essentials['cue_word_dict'],
+                    'stop_word_dict': essentials['stop_word_dict'],
+                },
+                'word_similarity_calculators': {
+                    'word_embedding': {
+                        'class': 'WordEmbeddingCalculator',
+                        'word_embedding_vectors': word_embedding_vectors
+                    }
+                },
+                'method': {
+                    'de_boni': {
+                        'class': 'DeBoni',
+                        'sentence_similarity_calculator': {
+                            'cache': True,
+                            'cache_file_name': 'data/sentence-score-cache',
+                            'word_similarity_calculator': 'word_embedding'
+                        }
+                    }
+                }
+            }
+            paragraph_recognition.configure(method_config)
+            method = paragraph_recognition.get_method('de_boni')
+            test(method, 'data/q-q-0.89-q-a-0.89.txt')
         elif opt in ('-e', '--evaluation'):
-            evaluation()
+            print evaluation('data/{}'.format('q-q-1.0-q-a-1.0.txt'))
         elif opt in ('-a', '--adjust-threshold'):
             essentials = build_essentials('data')
             word_embedding_vectors = build_word_embedding_vectors()
@@ -360,16 +409,15 @@ def main(argv):
                     'de_boni': {
                         'class': 'DeBoni',
                         'sentence_similarity_calculator': {
+                            'cache': True,
+                            'cache_file_name': 'data/sentence-score-cache',
                             'word_similarity_calculator': 'word_embedding'
                         }
                     }
                 }
             }
             paragraph_recognition.configure(method_config)
-            # for x in range(0, 11, 1):
-            #     threshold = x / 10.0
-            #     adjust_threshold(q_a_threshold=threshold)
-            adjust_threshold()
+            adjust_threshold('data/pid-500-len-10-pcvs')
 
 
 if __name__ == '__main__':

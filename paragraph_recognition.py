@@ -3,7 +3,9 @@
 import json
 import logging
 import math
+import os
 import sys
+import cPickle as pickle
 
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
@@ -39,7 +41,7 @@ def vector_cos(a, b):
 
 
 class AnalyzedSentence(object):
-    def __init__(self, sentence):
+    def __init__(self, md5, sentence):
         if isinstance(sentence, unicode):
             self.json = json.loads(sentence)
         elif isinstance(sentence, list):
@@ -47,6 +49,7 @@ class AnalyzedSentence(object):
         else:
             raise TypeError('expecting type is unicode or json, but {}'.
                             format(sentence.__class__))
+        self.md5 = md5
 
     def has_pronoun(self):
         len_threshold = 10
@@ -106,10 +109,40 @@ class AnalyzedSentence(object):
 
 
 class SentenceSimilarityCalculator(object):
-    def __init__(self, word_similarity_calculator=None):
+    score_cache = {}
+
+    def __init__(self, word_similarity_calculator, cache=False,
+                 cache_file_name=''):
         self.word_similarity_calculator = word_similarity_calculator
+        self.cache = cache
+        self.cache_file_name = cache_file_name
+        if self.cache and os.path.isfile(self.cache_file_name):
+            with open(self.cache_file_name, 'rb') as f:
+                logger.info('start to load score cache')
+                self.score_cache = pickle.load(f)
+                logger.info('finished loading score cache')
+
+    def __del__(self):
+        if self.score_cache and self.cache:
+            with open(self.cache_file_name, 'wb') as f:
+                logger.info('start to save score cache')
+                pickle.dump(self.score_cache, f)
+                logger.info('finished saving score cache')
 
     def calculate(self, text_a, text_b):
+        if self.cache:
+            key = (text_a.md5, text_b.md5)
+            if key in self.score_cache:
+                score = self.score_cache[key]
+                logger.debug('sentence score from cache: %s', score)
+                return score
+        score = self._calculate(text_a, text_b)
+        if self.cache:
+            self.score_cache[key] = score
+            logger.debug('add sentence score into cache: %s', score)
+        return score
+
+    def _calculate(self, text_a, text_b):
         score = 0.0
         text_a_len = 0
         for word in text_a.words_exclude_stop():
@@ -162,6 +195,7 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
             raw_score = vector_cos(self.word_embedding_vectors[word_a],
                                    self.word_embedding_vectors[word_b])
             score = (raw_score + 1) / 2
+        logger.debug('word score: %s', score)
         return score
 
 
@@ -183,12 +217,13 @@ class DeBoni(AbstractMethod):
 
     def __init__(self, sentence_similarity_calculator):
         super(DeBoni, self).__init__(sentence_similarity_calculator)
-        self.q_q_threshold = 0.5
-        self.q_a_threshold = 0.5
+        self.q_q_threshold = 0.89
+        self.q_a_threshold = 0.89
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
         if question.has_pronoun() or question.has_cue_word() or \
+                not question.has_verb() or \
                 (history_questions and self.max_sentence_similarity(
                     question, history_questions) > self.q_q_threshold) or \
                 (previous_answer and self.sentence_similarity_calculator.
@@ -238,10 +273,9 @@ class Configurator(object):
         config = self.dict_config['word_similarity_calculators']
         for name in config:
             inner_config = config[name]
-            class_name = inner_config['class']
+            kwargs = dict([(k, inner_config[k]) for k in inner_config])
+            class_name = kwargs.pop('class')
             class_ = self.resolve(class_name)
-            kwargs = dict([(k, inner_config[k]) for k in inner_config if
-                           k != 'class'])
             word_similarity_calculators[name] = class_(**kwargs)
 
     def configure_method(self):
@@ -249,14 +283,17 @@ class Configurator(object):
         for name in config:
             inner_config = config[name]
             class_name = inner_config['class']
-            clazz = self.resolve(class_name)
-            word_similarity_calculator_name = inner_config[
-                'sentence_similarity_calculator']['word_similarity_calculator']
+            class_ = self.resolve(class_name)
+            calculator_config = inner_config['sentence_similarity_calculator']
+            kwargs = dict([(k, calculator_config[k])
+                           for k in calculator_config])
+            word_similarity_calculator_name = kwargs.pop(
+                'word_similarity_calculator')
             word_similarity_calculator = word_similarity_calculators[
                 word_similarity_calculator_name]
             sentence_similarity_calculator = SentenceSimilarityCalculator(
-                word_similarity_calculator)
-            methods[name] = clazz(sentence_similarity_calculator)
+                word_similarity_calculator, **kwargs)
+            methods[name] = class_(sentence_similarity_calculator)
 
     @staticmethod
     def resolve(class_name):
