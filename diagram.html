@@ -58,7 +58,7 @@
                 var path = 'file:///' + $('#path').val() + '/' + val.name;
                 var divFollowId = val.name + '.f';
                 var divNewId = val.name + '.n';
-                var divHeader = $('<div>' + val.name + '</div>');
+                var divHeader = $('<div>' + path + '</div>');
                 var divFollow = $('<div id="' + divFollowId + '", sty' + 'le="width:50%; float: left">');
                 var divNew= $('<div id="' + divNewId + '", style="width:50%; float: left">');
                 $("#diagrams").append(divHeader, divFollow, divNew);

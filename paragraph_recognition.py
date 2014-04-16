@@ -222,7 +222,8 @@ class DeBoni(AbstractMethod):
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
-        if question.has_pronoun() or question.has_cue_word() or \
+        if question.has_pronoun() or \
+                question.has_cue_word() or \
                 not question.has_verb() or \
                 (history_questions and self.max_sentence_similarity(
                     question, history_questions) > self.q_q_threshold) or \

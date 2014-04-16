@@ -166,9 +166,11 @@ def evaluation(file_name):
     with codecs.open(answer_file_name, encoding='utf-8') as actual, \
             codecs.open(file_name, encoding='utf-8') as predicted:
         result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
-                  'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0}}
+                  'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+                  'A': {'T': 0, 'F': 0, 'P': 0.0}}
         new = result['N']
         follow = result['F']
+        all = result['A']
         for predicted_line in predicted:
             predicted_line = predicted_line.strip()
             actual_line = actual.next()
@@ -180,6 +182,9 @@ def evaluation(file_name):
         follow['P'] = ratio(follow['F'], follow['N'])
         follow['R'] = ratio(follow['F'], new['F'])
         follow['F1'] = 2*follow['R']*ratio(follow['P'], follow['R'])
+        all['T'] = new['N'] + follow['F']
+        all['F'] = new['F'] + follow['N']
+        all['P'] = ratio(all['T'], all['F'])
     return result
 
 
@@ -286,7 +291,7 @@ class DataSetGenerator():
                 self.result_file_name, encoding='utf-8', mode='wb') as result:
             logger.info('start to generate data set')
             for paragraph in Session.query(Paragraph).filter(
-                    Paragraph.paragraph_id <= 500).filter(
+                    Paragraph.paragraph_id <= 600).filter(
                         Paragraph.is_deleted == 0).all():
                 # 当前分类与上一话段分类一样，先不写，入队列
                 if paragraph.question.category_id == previous_category_id:
