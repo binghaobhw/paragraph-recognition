@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
-from Queue import Queue
 import codecs
+from collections import deque
 import getopt
 import hashlib
 import json
@@ -13,8 +13,8 @@ import re
 import requests
 from data_access import Session, LtpResult, Paragraph
 from log_config import LOG_PROJECT_NAME, LOGGING
-from paragraph_recognition import AnalyzedSentence
-import paragraph_recognition
+from method import AnalyzedSentence
+import method
 
 logger = logging.getLogger(LOG_PROJECT_NAME + '.experiment')
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
@@ -97,39 +97,7 @@ def get_analyzed_result(question_text):
     return analyzed_result
 
 
-def build_essentials(path):
-    file_dict = {
-        'third_person_pronoun_dict': path + '/third-person-pronoun.txt',
-        'demonstrative_pronoun_dict': path + '/demonstrative-pronoun.txt',
-        'cue_word_dict': path + '/cue-word.txt',
-        'stop_word_dict': path + '/stop-word.txt'
-    }
-    essentials = {}
-    for name, path in file_dict.items():
-        with codecs.open(path, encoding='utf-8', mode='rb') as f:
-            essentials[name] = dict.fromkeys([line.strip() for line in f])
-    return essentials
-
-
-def build_word_embedding_vectors():
-    word_embedding_vectors_file = 'data/baike-50.vec.txt'
-    with codecs.open(word_embedding_vectors_file, encoding='utf-8') as f:
-        word_embedding_vectors = {}
-        logger.info('start to build word vector from %s',
-                    word_embedding_vectors_file)
-        f.next()
-        for line in f:
-            line = line.strip()
-            columns = line.split(' ')
-            word = columns[0]
-            vector = [float(num_text) for num_text in columns[1:]]
-            word_embedding_vectors[word] = vector
-        logger.info('finished building word vector')
-
-    return word_embedding_vectors
-
-
-def test(method, file_name='data/predicted-result.txt'):
+def test(method_, file_name='data/predicted-result.txt'):
     with codecs.open('data/test-set.txt', encoding='utf-8') as test_set, \
             codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
         logger.info('start to test all')
@@ -190,15 +158,16 @@ def evaluation(file_name):
 
 def ratio(a, b):
     total = a+b
-    if total == 0:
-        return 0.0
-    return float(a) / total
+    result = 0.0
+    if total != 0:
+        result = float(a) / total
+    return result
 
 
 def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
     if q_a_threshold is not None and q_q_threshold is not None:
         raise RuntimeError('no more than 1 threshold given but 2')
-    method = paragraph_recognition.get_method('de_boni')
+    method_ = method.get_method('de_boni')
     # 调参方式 0-两个都调 1-调q_q 2-调q_a
     scheme = 0
     output_name = '{}/adjust-threshold-both.json'.format(path)
@@ -209,7 +178,7 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
                                                                q_a_threshold)
         logger.info('set constant question-answer similarity threshold=%s',
                     q_a_threshold)
-        method.q_a_threshold = q_a_threshold
+        method_.q_a_threshold = q_a_threshold
     if q_q_threshold is not None:
         # q_q_threshold固定
         scheme += 2
@@ -217,7 +186,7 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
                                                                q_q_threshold)
         logger.info('set constant question-question similarity threshold=%s',
                     q_q_threshold)
-        method.q_q_threshold = q_q_threshold
+        method_.q_q_threshold = q_q_threshold
     result = []
     for x in range(80, 100, 1):
         threshold = x / 100.0
@@ -225,26 +194,26 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
         if scheme == 1:
             logger.info('set question-question similarity thresholds=%s',
                         threshold)
-            method.q_q_threshold = threshold
+            method_.q_q_threshold = threshold
             file_name = '{}/q-q-{}-q-a-{}.txt'.format(path, threshold,
                                                       q_a_threshold)
         # q_q_threshold固定
         elif scheme == 2:
             logger.info('set question-answer similarity thresholds=%s',
                         threshold)
-            method.q_a_threshold = threshold
+            method_.q_a_threshold = threshold
             file_name = '{}/q-q-{}-q-a-{}.txt'.format(path, q_q_threshold,
                                                       threshold)
         else:
             logger.info('set all similarity thresholds=%s',
                         threshold)
-            method.q_a_threshold = threshold
-            method.q_q_threshold = threshold
+            method_.q_a_threshold = threshold
+            method_.q_q_threshold = threshold
             file_name = '{0}/q-q-{1}-q-a-{1}.txt'.format(path, threshold)
         if os.path.isfile(file_name):
             logger.info('%s exists', file_name)
         else:
-            test(method, file_name=file_name)
+            test(method_, file_name=file_name)
         evaluation_result = evaluation(file_name=file_name)
         result.append({'threshold': threshold, 'result': evaluation_result})
     with codecs.open(output_name, encoding='utf-8', mode='wb') as f:
@@ -253,13 +222,13 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
 
 class DataSetGenerator():
     def __init__(self, data_set_file_name='data/test-set.txt',
-                 result_file_name='data/actual-result.txt'):
+                 answer_file_name='data/true-result.txt'):
         self.result_pattern = u'{}{}:{}\n'
-        self.queue = Queue()
+        self.queue = deque()
         self.question_num = 1
         self.answer_num = 1
         self.data_set_file_name = data_set_file_name
-        self.result_file_name = result_file_name
+        self.answer_file_name = answer_file_name
 
     def generate_paragraph(self, paragraph):
         paragraph_lines = [self.result_pattern.format(
@@ -288,7 +257,7 @@ class DataSetGenerator():
         previous_category_id = None
         with codecs.open(self.data_set_file_name, encoding='utf-8',
                          mode='wb') as data_set, codecs.open(
-                self.result_file_name, encoding='utf-8', mode='wb') as result:
+                self.answer_file_name, encoding='utf-8', mode='wb') as result:
             logger.info('start to generate data set')
             for paragraph in Session.query(Paragraph).filter(
                     Paragraph.paragraph_id <= 600).filter(
@@ -297,7 +266,7 @@ class DataSetGenerator():
                 if paragraph.question.category_id == previous_category_id:
                     logger.info('same category id, put %s into queue',
                                 paragraph.paragraph_id)
-                    self.queue.put(paragraph)
+                    self.queue.append(paragraph)
                     continue
                 paragraph_lines, result_lines = self.generate_paragraph(
                     paragraph)
@@ -306,13 +275,13 @@ class DataSetGenerator():
                 result.writelines(result_lines)
                 previous_category_id = paragraph.question.category_id
                 # 看队列头是否能写
-                if not self.queue.empty():
-                    paragraph_in_queue = self.queue.get()
+                if len(self.queue) > 0:
+                    paragraph_in_queue = self.queue.popleft()
                     if paragraph_in_queue.question.category_id == \
                             previous_category_id:
                         logger.info('same category id again, put %s into '
                                     'queue', paragraph_in_queue.paragraph_id)
-                        self.queue.put(paragraph_in_queue)
+                        self.queue.append(paragraph_in_queue)
                     else:
                         logger.info('dequeue')
                         paragraph_lines, result_lines = self.\
@@ -322,14 +291,44 @@ class DataSetGenerator():
                         result.writelines(result_lines)
                         previous_category_id = paragraph_in_queue.question.\
                             category_id
-            while not self.queue.empty():
-                paragraph_in_queue = self.queue.get()
+            for paragraph_in_queue in self.queue:
                 paragraph_lines, result_lines = self.generate_paragraph(
                     paragraph_in_queue)
                 paragraph_lines.append('\n')
                 data_set.writelines(paragraph_lines)
                 result.writelines(result_lines)
             logger.info('finished generating data set')
+
+
+def train_data(method_, train_set_file_name, train_data_file_name):
+    with codecs.open(train_set_file_name, encoding='utf-8') as train_set, \
+            codecs.open('data/true-result.txt', encoding='utf-8') as \
+                    result_file, codecs.open(train_data_file_name,
+                                             encoding='utf-8', mode='wb') as \
+            train_data:
+        context_window = 5
+        history_questions = deque(maxlen=context_window)
+        previous_answer_text = None
+        last_is_answer = False
+        for line in train_set:
+            line = line.strip()
+            if line == '':
+                continue
+            if line.startswith('A'):
+                previous_answer_text = line.split(':', 1)[1]
+                last_is_answer = True
+                continue
+            result = result_file.next().strip().split(':', 1)[1]
+            [prefix, question_text] = line.split(':', 1)
+            question = get_analyzed_result(question_text)
+            previous_answer = get_analyzed_result(previous_answer_text) if \
+                last_is_answer else None
+            features = method_.features(question, history_questions,
+                                        previous_answer)
+            train_data.write('{0} {1} {2[0]} {2[1]} {2[2]} {2[3]} {2[4]}\n'.
+                             format(prefix, result, features))
+            history_questions.append(question)
+            last_is_answer = False
 
 
 def adjust_len(path, output):
@@ -350,79 +349,65 @@ def show_usage():
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'htdea', ['help', 'test-set', 'de-boni', 'evaluation', 'adjust-threshold'])
+        opts, args = getopt.getopt(argv, 'hgtea', ['help', 'generate', 'test',
+                                                   'evaluation',
+                                                   'adjust-threshold',
+                                                   'train-data'])
     except getopt.GetoptError:
         show_usage()
         return
     logging.config.dictConfig(LOGGING)
+    method_config = {
+        'essentials': {
+            'third_person_pronoun_dict': 'data/third-person-pronoun.txt',
+            'demonstrative_pronoun_dict': 'data/demonstrative-pronoun.txt',
+            'cue_word_dict': 'data/cue-word.txt',
+            'stop_word_dict': 'data/stop-word.txt'
+        },
+        'word_similarity_calculators': {
+            'word_embedding': {
+                'class': 'WordEmbeddingCalculator',
+                'vector_file_name': 'data/baike-50.vec.txt'
+            }
+        },
+        'sentence_similarity_calculator': {
+            'ssc': {
+                'cache': True,
+                'cache_file_name': 'data/sentence-score-cache',
+                'word_similarity_calculator': 'word_embedding'
+            }
+        },
+        'method': {
+            'de_boni': {
+                'class': 'DeBoni',
+                'sentence_similarity_calculator': 'ssc'
+            },
+            'fan_yang': {
+                'class': 'FanYang',
+                'sentence_similarity_calculator': 'ssc'
+            }
+        }
+    }
     for opt, arg in opts:
         if opt in ('-h', '--help'):
             show_usage()
             return
-        elif opt in ('-t', '--test-set'):
+        elif opt in ('-g', '--generate'):
             data_set_generator = DataSetGenerator()
             data_set_generator.generate()
-        elif opt in ('-d', '--de-boni'):
-            essentials = build_essentials('data')
-            word_embedding_vectors = build_word_embedding_vectors()
-            method_config = {
-                'essentials': {
-                    'third_person_pronoun_dict': essentials['third_person_pronoun_dict'],
-                    'demonstrative_pronoun_dict': essentials['demonstrative_pronoun_dict'],
-                    'cue_word_dict': essentials['cue_word_dict'],
-                    'stop_word_dict': essentials['stop_word_dict'],
-                },
-                'word_similarity_calculators': {
-                    'word_embedding': {
-                        'class': 'WordEmbeddingCalculator',
-                        'word_embedding_vectors': word_embedding_vectors
-                    }
-                },
-                'method': {
-                    'de_boni': {
-                        'class': 'DeBoni',
-                        'sentence_similarity_calculator': {
-                            'cache': True,
-                            'cache_file_name': 'data/sentence-score-cache',
-                            'word_similarity_calculator': 'word_embedding'
-                        }
-                    }
-                }
-            }
-            paragraph_recognition.configure(method_config)
-            method = paragraph_recognition.get_method('de_boni')
-            test(method, 'data/q-q-0.89-q-a-0.89.txt')
+        elif opt in ('-t', '--test'):
+            method.configure(method_config)
+            method_ = method.get_method(arg)
+            test(method_, 'data/q-q-0.89-q-a-0.89.txt')
         elif opt in ('-e', '--evaluation'):
             print evaluation('data/{}'.format('q-q-1.0-q-a-1.0.txt'))
         elif opt in ('-a', '--adjust-threshold'):
-            essentials = build_essentials('data')
-            word_embedding_vectors = build_word_embedding_vectors()
-            method_config = {
-                'essentials': {
-                    'third_person_pronoun_dict': essentials['third_person_pronoun_dict'],
-                    'demonstrative_pronoun_dict': essentials['demonstrative_pronoun_dict'],
-                    'cue_word_dict': essentials['cue_word_dict'],
-                    'stop_word_dict': essentials['stop_word_dict'],
-                },
-                'word_similarity_calculators': {
-                    'word_embedding': {
-                        'class': 'WordEmbeddingCalculator',
-                        'word_embedding_vectors': word_embedding_vectors
-                    }
-                },
-                'method': {
-                    'de_boni': {
-                        'class': 'DeBoni',
-                        'sentence_similarity_calculator': {
-                            'cache': True,
-                            'cache_file_name': 'data/sentence-score-cache',
-                            'word_similarity_calculator': 'word_embedding'
-                        }
-                    }
-                }
-            }
-            paragraph_recognition.configure(method_config)
+            method.configure(method_config)
             adjust_threshold('data/pid-500-len-10-pcvs')
+        elif opt in '--train-data':
+            method.configure(method_config)
+            method_ = method.get_method('fan_yang')
+            train_data(method_, 'data/test-set.txt', 'data/train-data.txt')
 
 
 if __name__ == '__main__':

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+import codecs
 import json
 import logging
 import math
@@ -20,6 +21,7 @@ ESSENTIALS_DICT = {'third_person_pronoun_dict': THIRD_PERSON_PRONOUN_DICT,
                    'stop_word_dict': STOP_WORD_DICT}
 
 word_similarity_calculators = {}
+sentence_similarity_calculators = {}
 methods = {}
 
 
@@ -50,6 +52,23 @@ class AnalyzedSentence(object):
             raise TypeError('expecting type is unicode or json, but {}'.
                             format(sentence.__class__))
         self.md5 = md5
+
+    def has_noun(self):
+        result = False
+        for w in self.words_with_pos_tag('n'):
+            result = True
+            break
+        logger.info('%s', result)
+        return result
+
+    def has_proper_noun(self):
+        result = False
+        for w in self.words():
+            if w['ne'] != '0':
+                result = True
+                break
+        logger.info('%s', result)
+        return result
 
     def has_pronoun(self):
         len_threshold = 10
@@ -184,9 +203,24 @@ class HowNetCalculator(WordSimilarityCalculator):
 
 
 class WordEmbeddingCalculator(WordSimilarityCalculator):
-    def __init__(self, word_embedding_vectors):
+    word_embedding_vectors = {}
+
+    def __init__(self, vector_file_name):
         super(WordEmbeddingCalculator, self).__init__()
-        self.word_embedding_vectors = word_embedding_vectors
+        self.vector_file_name = vector_file_name
+        self.build_word_embedding_vectors()
+
+    def build_word_embedding_vectors(self):
+        with codecs.open(self.vector_file_name, encoding='utf-8') as f:
+            logger.info('start to build word vector from %s',
+                        self.vector_file_name)
+            for line in f:
+                line = line.strip()
+                columns = line.split(' ')
+                word = columns[0]
+                vector = [float(num_text) for num_text in columns[1:]]
+                self.word_embedding_vectors[word] = vector
+            logger.info('finished building word vector')
 
     def calculate(self, word_a, word_b):
         score = 0.0
@@ -195,7 +229,7 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
             raw_score = vector_cos(self.word_embedding_vectors[word_a],
                                    self.word_embedding_vectors[word_b])
             score = (raw_score + 1) / 2
-        logger.debug('word score: %s', score)
+        logger.debug('[%s, %s] score: %s', word_a, word_b, score)
         return score
 
 
@@ -211,6 +245,17 @@ class AbstractMethod(object):
 
     def save_model(self):
         pass
+
+    def max_sentence_similarity(self, question, history_questions):
+        # sentence similarity
+        max_sentence_score = 0.0
+        for history_question in history_questions:
+            score = self.sentence_similarity_calculator.calculate(
+                question, history_question)
+            if max_sentence_score < score:
+                max_sentence_score = score
+        logger.info('max sentence score: %s', max_sentence_score)
+        return max_sentence_score
 
 
 class DeBoni(AbstractMethod):
@@ -232,26 +277,38 @@ class DeBoni(AbstractMethod):
             follow_up = True
         return follow_up
 
-    def max_sentence_similarity(self, question, history_questions):
-        # sentence similarity
-        max_sentence_score = 0.0
-        for history_question in history_questions:
-            score = self.sentence_similarity_calculator.calculate(
-                question, history_question)
-            if max_sentence_score < score:
-                max_sentence_score = score
-        logger.info('max sentence score: %s', max_sentence_score)
-        return max_sentence_score
-
 
 class FanYang(AbstractMethod):
-    pass
+    classifier = None
+
+    def __init__(self, sentence_similarity_calculator):
+        super(FanYang, self).__init__(sentence_similarity_calculator)
+
+    def train(self, question, history_questions, previous_answer):
+        super(FanYang, self).train(question, history_questions,
+                                   previous_answer)
+
+    def is_follow_up(self, question, history_questions, previous_answer):
+        feature_vector = self.features(question, history_questions, previous_answer)
+
+    def save_model(self):
+        super(FanYang, self).save_model()
+
+    def features(self, question, history_questions, previous_answer):
+        """返回特征值list"""
+        feature_vector = [question.has_pronoun(),
+                          question.has_proper_noun(),
+                          question.has_noun(),
+                          question.has_verb(),
+                          self.max_sentence_similarity(question,
+                                                       history_questions)]
+        return feature_vector
 
 
 def get_method(name):
     if name in methods:
         return methods[name]
-    raise ValueError('no method named %s', name)
+    raise ValueError('no method named {}'.format(name))
 
 
 class Configurator(object):
@@ -263,49 +320,52 @@ class Configurator(object):
         methods.clear()
         self.configure_essentials()
         self.configure_word_similarity_calculator()
+        self.configure_sentence_similarity_calculator()
         self.configure_method()
 
     def configure_essentials(self):
         config = self.dict_config['essentials']
         for k, v in config.items():
-            ESSENTIALS_DICT[k] = v
+            with codecs.open(v, encoding='utf-8') as f:
+                ESSENTIALS_DICT[k] = dict.fromkeys([line.strip() for line in f])
 
     def configure_word_similarity_calculator(self):
         config = self.dict_config['word_similarity_calculators']
-        for name in config:
-            inner_config = config[name]
-            kwargs = dict([(k, inner_config[k]) for k in inner_config])
+        for name, kwargs in config.items():
             class_name = kwargs.pop('class')
-            class_ = self.resolve(class_name)
+            class_ = resolve(class_name)
             word_similarity_calculators[name] = class_(**kwargs)
+
+    def configure_sentence_similarity_calculator(self):
+        config = self.dict_config['sentence_similarity_calculator']
+        for name, kwargs in config.items():
+            word_calculator_name = kwargs.pop('word_similarity_calculator')
+            sentence_similarity_calculators[name] = \
+                SentenceSimilarityCalculator(
+                    word_similarity_calculators[word_calculator_name],
+                    **kwargs)
 
     def configure_method(self):
         config = self.dict_config['method']
-        for name in config:
-            inner_config = config[name]
-            class_name = inner_config['class']
-            class_ = self.resolve(class_name)
-            calculator_config = inner_config['sentence_similarity_calculator']
-            kwargs = dict([(k, calculator_config[k])
-                           for k in calculator_config])
-            word_similarity_calculator_name = kwargs.pop(
-                'word_similarity_calculator')
-            word_similarity_calculator = word_similarity_calculators[
-                word_similarity_calculator_name]
-            sentence_similarity_calculator = SentenceSimilarityCalculator(
-                word_similarity_calculator, **kwargs)
-            methods[name] = class_(sentence_similarity_calculator)
+        for name, kwargs in config.items():
+            class_name = kwargs.pop('class')
+            class_ = resolve(class_name)
+            sentence_calculator_name = kwargs.pop(
+                'sentence_similarity_calculator')
+            methods[name] = class_(
+                sentence_similarity_calculators[sentence_calculator_name],
+                **kwargs)
 
-    @staticmethod
-    def resolve(class_name):
-        try:
-            if class_name in globals():
-                return globals()[class_name]
-        except:
-            e, tb = sys.exc_info()[1:]
-            v = ValueError('cannot resolve %r: %s' % (class_name, e))
-            v.__cause__, v.__traceback__ = e, tb
-            raise v
+
+def resolve(class_name):
+    try:
+        if class_name in globals():
+            return globals()[class_name]
+    except:
+        e, tb = sys.exc_info()[1:]
+        v = ValueError('cannot resolve %r: %s' % (class_name, e))
+        v.__cause__, v.__traceback__ = e, tb
+        raise v
 
 
 def configure(dict_config):
