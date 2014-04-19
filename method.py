@@ -7,6 +7,7 @@ import math
 import os
 import sys
 import cPickle as pickle
+import DecisionTree
 
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
@@ -242,12 +243,6 @@ class AbstractMethod(object):
     def is_follow_up(self, question, history_questions, previous_answer):
         pass
 
-    def train(self, question, history_questions, previous_answer):
-        pass
-
-    def save_model(self):
-        pass
-
     def max_sentence_similarity(self, question, history_questions):
         # sentence similarity
         max_sentence_score = 0.0
@@ -282,22 +277,40 @@ class DeBoni(AbstractMethod):
 
 class FanYang(AbstractMethod):
     classifier = None
+    root_node = None
 
-    def __init__(self, sentence_similarity_calculator):
+    def __init__(self, sentence_similarity_calculator, train_data_file):
         super(FanYang, self).__init__(sentence_similarity_calculator)
+        self.train_data_file = train_data_file
 
-    def train(self, question, history_questions, previous_answer):
-        super(FanYang, self).train(question, history_questions,
-                                   previous_answer)
+    def train(self):
+        self.classifier = DecisionTree.DecisionTree(
+            training_datafile=self.train_data_file,
+            csv_class_column_index=1,
+            csv_columns_for_features=[2, 3, 4, 5, 6],
+            entropy_threshold=0.01,
+            max_depth_desired=8,
+            symbolic_to_numeric_cardinality_threshold=10
+        )
+        self.classifier.get_training_data()
+        self.classifier.calculate_first_order_probabilities()
+        self.classifier.calculate_class_priors()
+        self.root_node = self.classifier.construct_decision_tree_classifier()
 
     def is_follow_up(self, question, history_questions, previous_answer):
-        feature_vector = self.features(question, history_questions, previous_answer)
-
-    def save_model(self):
-        super(FanYang, self).save_model()
+        feature_vector = self.features(question, history_questions,
+                                       previous_answer)
+        case = ['pronoun={}'.format(feature_vector[0]),
+                'proper_noun={}'.format(feature_vector[1]),
+                'noun={}'.format(feature_vector[2]),
+                'verb={}'.format(feature_vector[3]),
+                'max_sentence_similarity={}'.format(feature_vector[4])]
+        if self.classifier is None:
+            self.train()
+        result = self.classifier.classify(self.root_node, case)
 
     def features(self, question, history_questions, previous_answer):
-        """返回特征值list"""
+        """返回特征值向量"""
         feature_vector = [question.has_pronoun(),
                           question.has_proper_noun(),
                           question.has_noun(),

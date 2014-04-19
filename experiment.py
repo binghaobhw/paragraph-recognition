@@ -328,7 +328,7 @@ def train_data(method_, train_set_file_name, train_data_file_name):
                 last_is_answer else None
             features = method_.features(question, history_questions,
                                         previous_answer)
-            output.write('{0},{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4]}\n'.
+            output.write('{0},{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4].3f}\n'.
                          format(num, result, features))
             history_questions.append(question)
             last_is_answer = False
@@ -387,7 +387,8 @@ def main(argv):
             },
             'fan_yang': {
                 'class': 'FanYang',
-                'sentence_similarity_calculator': 'ssc'
+                'sentence_similarity_calculator': 'ssc',
+                'train_data_file': 'data/train-data.csv'
             }
         }
     }
