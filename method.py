@@ -7,7 +7,6 @@ import math
 import os
 import sys
 import cPickle as pickle
-import DecisionTree
 
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
@@ -284,30 +283,21 @@ class FanYang(AbstractMethod):
         self.train_data_file = train_data_file
 
     def train(self):
-        self.classifier = DecisionTree.DecisionTree(
-            training_datafile=self.train_data_file,
-            csv_class_column_index=1,
-            csv_columns_for_features=[2, 3, 4, 5, 6],
-            entropy_threshold=0.01,
-            max_depth_desired=8,
-            symbolic_to_numeric_cardinality_threshold=10
-        )
-        self.classifier.get_training_data()
-        self.classifier.calculate_first_order_probabilities()
-        self.classifier.calculate_class_priors()
-        self.root_node = self.classifier.construct_decision_tree_classifier()
+        pass
 
     def is_follow_up(self, question, history_questions, previous_answer):
         feature_vector = self.features(question, history_questions,
                                        previous_answer)
-        case = ['pronoun={}'.format(feature_vector[0]),
-                'proper_noun={}'.format(feature_vector[1]),
-                'noun={}'.format(feature_vector[2]),
-                'verb={}'.format(feature_vector[3]),
-                'max_sentence_similarity={}'.format(feature_vector[4])]
+        case = [u'pronoun={}'.format(feature_vector[0]),
+                u'proper_noun={}'.format(feature_vector[1]),
+                u'noun={}'.format(feature_vector[2]),
+                u'verb={}'.format(feature_vector[3]),
+                u'max_sentence_similarity={}'.format(feature_vector[4])]
         if self.classifier is None:
             self.train()
         result = self.classifier.classify(self.root_node, case)
+        for i in result:
+            pass
 
     def features(self, question, history_questions, previous_answer):
         """返回特征值向量"""
@@ -354,6 +344,7 @@ class Configurator(object):
         for name, kwargs in config.items():
             class_name = kwargs.pop('class')
             class_ = resolve(class_name)
+            # word_similarity_calculators[name] = None
             word_similarity_calculators[name] = class_(**kwargs)
 
     def configure_sentence_similarity_calculator(self):

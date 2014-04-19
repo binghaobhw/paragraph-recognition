@@ -42,6 +42,11 @@ class TestFanYang(TestCase):
         }
         method.configure(method_config)
         mock_method.assert_called()
+        method_ = method.methods['fan_yang']
+        q = method.AnalyzedSentence(u'36b9945374b50b01855ebe582e305583',
+                                    u'[[[{"cont": "你", "parent": 1, "relate": "ATT", "ne": "O", "pos": "r", "arg": [], "id": 0}, {"cont": "男女", "parent": -1, "relate": "HED", "ne": "O", "pos": "n", "arg": [], "id": 1}, {"cont": "？", "parent": 1, "relate": "WP", "ne": "O", "pos": "wp", "arg": [], "id": 2}]]]')
+
+        method_.is_follow_up(q, [], None)
 
     def test_save_model(self):
         self.fail()
