@@ -305,11 +305,13 @@ def train_data(method_, train_set_file_name, train_data_file_name):
             codecs.open('data/true-result.txt', encoding='utf-8') as \
                     result_file, codecs.open(train_data_file_name,
                                              encoding='utf-8', mode='wb') as \
-            train_data:
+            output:
         context_window = 5
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
         last_is_answer = False
+        output.write('"","result","pronoun","proper_noun","noun","verb",'
+                     '"max_sentence_similarity"\n')
         for line in train_set:
             line = line.strip()
             if line == '':
@@ -320,13 +322,14 @@ def train_data(method_, train_set_file_name, train_data_file_name):
                 continue
             result = result_file.next().strip().split(':', 1)[1]
             [prefix, question_text] = line.split(':', 1)
+            num = prefix[1:]
             question = get_analyzed_result(question_text)
             previous_answer = get_analyzed_result(previous_answer_text) if \
                 last_is_answer else None
             features = method_.features(question, history_questions,
                                         previous_answer)
-            train_data.write('{0} {1} {2[0]} {2[1]} {2[2]} {2[3]} {2[4]}\n'.
-                             format(prefix, result, features))
+            output.write('{0},{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4]}\n'.
+                         format(num, result, features))
             history_questions.append(question)
             last_is_answer = False
 
@@ -359,10 +362,10 @@ def main(argv):
     logging.config.dictConfig(LOGGING)
     method_config = {
         'essentials': {
-            'third_person_pronoun_dict': 'data/third-person-pronoun.txt',
-            'demonstrative_pronoun_dict': 'data/demonstrative-pronoun.txt',
-            'cue_word_dict': 'data/cue-word.txt',
-            'stop_word_dict': 'data/stop-word.txt'
+            'third_person_pronoun': 'data/third-person-pronoun.txt',
+            'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
+            'cue_word': 'data/cue-word.txt',
+            'stop_word': 'data/stop-word.txt'
         },
         'word_similarity_calculators': {
             'word_embedding': {
@@ -407,7 +410,7 @@ def main(argv):
         elif opt in '--train-data':
             method.configure(method_config)
             method_ = method.get_method('fan_yang')
-            train_data(method_, 'data/test-set.txt', 'data/train-data.txt')
+            train_data(method_, 'data/test-set.txt', 'data/train-data.csv')
 
 
 if __name__ == '__main__':

@@ -146,7 +146,8 @@ class CategoryExtractor(Extractor):
             logger.error('no category found')
             return
         write_csv(TOP_CATEGORY_CSV, 'wb', category_url_list)
-        logger.info("finished extracting top category into '%s'", TOP_CATEGORY_CSV)
+        logger.info("finished extracting top category into '%s'",
+                    TOP_CATEGORY_CSV)
 
     def extract(self, target):
         page = self.get_page(target)

@@ -11,14 +11,16 @@ import cPickle as pickle
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
 
-THIRD_PERSON_PRONOUN_DICT = {}
-DEMONSTRATIVE_PRONOUN_DICT = {}
-CUE_WORD_DICT = {}
-STOP_WORD_DICT = {}
-ESSENTIALS_DICT = {'third_person_pronoun_dict': THIRD_PERSON_PRONOUN_DICT,
-                   'demonstrative_pronoun_dict': DEMONSTRATIVE_PRONOUN_DICT,
-                   'cue_word_dict': CUE_WORD_DICT,
-                   'stop_word_dict': STOP_WORD_DICT}
+ESSENTIALS_DICT = dict.fromkeys(['third_person_pronoun',
+                                 'demonstrative_pronoun',
+                                 'cue_word',
+                                 'stop_word'], {})
+
+THIRD_PERSON_PRONOUN_DICT = ESSENTIALS_DICT['third_person_pronoun']
+DEMONSTRATIVE_PRONOUN_DICT = ESSENTIALS_DICT['demonstrative_pronoun']
+CUE_WORD_DICT = ESSENTIALS_DICT['cue_word']
+STOP_WORD_DICT = ESSENTIALS_DICT['stop_word']
+
 
 word_similarity_calculators = {}
 sentence_similarity_calculators = {}
@@ -327,10 +329,12 @@ class Configurator(object):
         config = self.dict_config['essentials']
         for k, v in config.items():
             with codecs.open(v, encoding='utf-8') as f:
+                d = ESSENTIALS_DICT[k]
                 logger.info('start to load %s from %s', k, v)
-                ESSENTIALS_DICT[k] = dict.fromkeys([line.strip() for line in f])
+                for line in f:
+                    d[line.strip()] = None
                 logger.info('finished loading %s, size=%s', k,
-                            len(ESSENTIALS_DICT[k]))
+                            len(d))
 
     def configure_word_similarity_calculator(self):
         config = self.dict_config['word_similarity_calculators']
