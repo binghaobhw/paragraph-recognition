@@ -327,7 +327,10 @@ class Configurator(object):
         config = self.dict_config['essentials']
         for k, v in config.items():
             with codecs.open(v, encoding='utf-8') as f:
+                logger.info('start to load %s from %s', k, v)
                 ESSENTIALS_DICT[k] = dict.fromkeys([line.strip() for line in f])
+                logger.info('finished loading %s, size=%s', k,
+                            len(ESSENTIALS_DICT[k]))
 
     def configure_word_similarity_calculator(self):
         config = self.dict_config['word_similarity_calculators']

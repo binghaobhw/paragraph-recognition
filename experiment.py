@@ -119,7 +119,7 @@ def test(method_, file_name='data/predicted-result.txt'):
             last_is_answer = False
             result = 'F'
             logger.info('start to test %s', prefix)
-            if not method.is_follow_up(question, history_questions,
+            if not method_.is_follow_up(question, history_questions,
                                        previous_answer):
                 result = 'N'
                 history_questions = []
@@ -264,7 +264,7 @@ class DataSetGenerator():
                         Paragraph.is_deleted == 0).all():
                 # 当前分类与上一话段分类一样，先不写，入队列
                 if paragraph.question.category_id == previous_category_id:
-                    logger.info('same category id, put %s into queue',
+                    logger.debug('same category id, put %s into queue',
                                 paragraph.paragraph_id)
                     self.queue.append(paragraph)
                     continue
@@ -279,11 +279,11 @@ class DataSetGenerator():
                     paragraph_in_queue = self.queue.popleft()
                     if paragraph_in_queue.question.category_id == \
                             previous_category_id:
-                        logger.info('same category id again, put %s into '
+                        logger.debug('same category id again, put %s into '
                                     'queue', paragraph_in_queue.paragraph_id)
                         self.queue.append(paragraph_in_queue)
                     else:
-                        logger.info('dequeue')
+                        logger.debug('dequeue')
                         paragraph_lines, result_lines = self.\
                             generate_paragraph(paragraph_in_queue)
                         paragraph_lines.append('\n')
