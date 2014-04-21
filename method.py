@@ -190,16 +190,106 @@ class WordSimilarityCalculator(object):
 
 
 class HowNetCalculator(WordSimilarityCalculator):
-    def __init__(self, word_similarity_table):
+    glossary = {}
+
+    def __init__(self):
         super(HowNetCalculator, self).__init__()
-        self.word_similarity_table = word_similarity_table
+
+    def load_glossary(self, glossary_file):
+        with codecs.open(glossary_file, encoding='utf-8') as f:
+            for line in f:
+                key, pos, description = line.split()
+            self.glossary[key] = description
 
     def calculate(self, word_a, word_b):
         score = 0.0
-        key = word_a, word_b
-        if key in self.word_similarity_table:
-            score = self.word_similarity_table[key]
+        if word_a in self.glossary and word_b in self.glossary:
+            pass
         return score
+
+    def sememe_similarity(self):
+        pass
+
+    def sememe_distance(self):
+        pass
+
+
+class WordDescription(object):
+    def __init__(self, word, description):
+        self.other_basic_sememe = []
+        self.relation_sememe = {}
+        self.relation_symbol = {}
+        self.word = word
+        if description.startswith('{'):
+            self.is_function_word = True
+            content = description[1: len(description)-1]
+        else:
+            self.is_function_word = False
+            content = description
+        sememes = content.split(',')
+        if content[0].isalpha():
+            self.first_basic_sememe = sememes.pop(0)
+        for sememe in sememes:
+            if sememe.startswith('('):
+                self.other_basic_sememe.append(sememe)
+                continue
+            s = sememe.split('=')
+            if len(s) == 2:
+                attribute, value = s
+                if not value.startswith('('):
+                    value = get_chinese_sememe(value)
+                self.relation_sememe[attribute] = value
+                continue
+            if not sememe[0].isalpha():
+                a = sememe[1:]
+                if not a.startswith('('):
+                    a = get_chinese_sememe(a)
+                self.relation_symbol[sememe[0]] = a
+                continue
+            self.other_basic_sememe.append(get_chinese_sememe(sememe))
+
+
+
+def get_chinese_sememe(sememe):
+    return sememe.split('|')[1]
+
+
+
+
+
+
+
+
+class Sememe(object):
+    def __init__(self, id_, content, father):
+        self.id_ = id_
+        self.content = content
+        self.father = father
+
+
+class SememeTree(object):
+    def __init__(self, list_, dict_):
+        self.list_ = list_
+        self.dict_ = dict_
+
+
+class SememeTreeBuilder(object):
+    def build(self, file_name):
+        with codecs.open(file_name, encoding='utf-8') as f:
+            sememe_list = []
+            sememe_tree = {}
+            for line in f:
+                id_, content, father = line.split()
+                id_ = int(id_)
+                father = int(father)
+                key = content.split('|')[0]
+                sememe = Sememe(id_, content, father)
+                sememe_list.append(sememe)
+                sememe_tree[key] = sememe
+        return SememeTree(sememe_list, sememe_tree)
+
+
+
 
 
 class WordEmbeddingCalculator(WordSimilarityCalculator):
