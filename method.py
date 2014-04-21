@@ -11,14 +11,16 @@ import cPickle as pickle
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
 
-THIRD_PERSON_PRONOUN_DICT = {}
-DEMONSTRATIVE_PRONOUN_DICT = {}
-CUE_WORD_DICT = {}
-STOP_WORD_DICT = {}
-ESSENTIALS_DICT = {'third_person_pronoun_dict': THIRD_PERSON_PRONOUN_DICT,
-                   'demonstrative_pronoun_dict': DEMONSTRATIVE_PRONOUN_DICT,
-                   'cue_word_dict': CUE_WORD_DICT,
-                   'stop_word_dict': STOP_WORD_DICT}
+ESSENTIALS_DICT = dict.fromkeys(['third_person_pronoun',
+                                 'demonstrative_pronoun',
+                                 'cue_word',
+                                 'stop_word'], {})
+
+THIRD_PERSON_PRONOUN_DICT = ESSENTIALS_DICT['third_person_pronoun']
+DEMONSTRATIVE_PRONOUN_DICT = ESSENTIALS_DICT['demonstrative_pronoun']
+CUE_WORD_DICT = ESSENTIALS_DICT['cue_word']
+STOP_WORD_DICT = ESSENTIALS_DICT['stop_word']
+
 
 word_similarity_calculators = {}
 sentence_similarity_calculators = {}
@@ -330,12 +332,6 @@ class AbstractMethod(object):
     def is_follow_up(self, question, history_questions, previous_answer):
         pass
 
-    def train(self, question, history_questions, previous_answer):
-        pass
-
-    def save_model(self):
-        pass
-
     def max_sentence_similarity(self, question, history_questions):
         # sentence similarity
         max_sentence_score = 0.0
@@ -370,22 +366,31 @@ class DeBoni(AbstractMethod):
 
 class FanYang(AbstractMethod):
     classifier = None
+    root_node = None
 
-    def __init__(self, sentence_similarity_calculator):
+    def __init__(self, sentence_similarity_calculator, train_data_file):
         super(FanYang, self).__init__(sentence_similarity_calculator)
+        self.train_data_file = train_data_file
 
-    def train(self, question, history_questions, previous_answer):
-        super(FanYang, self).train(question, history_questions,
-                                   previous_answer)
+    def train(self):
+        pass
 
     def is_follow_up(self, question, history_questions, previous_answer):
-        feature_vector = self.features(question, history_questions, previous_answer)
-
-    def save_model(self):
-        super(FanYang, self).save_model()
+        feature_vector = self.features(question, history_questions,
+                                       previous_answer)
+        case = [u'pronoun={}'.format(feature_vector[0]),
+                u'proper_noun={}'.format(feature_vector[1]),
+                u'noun={}'.format(feature_vector[2]),
+                u'verb={}'.format(feature_vector[3]),
+                u'max_sentence_similarity={}'.format(feature_vector[4])]
+        if self.classifier is None:
+            self.train()
+        result = self.classifier.classify(self.root_node, case)
+        for i in result:
+            pass
 
     def features(self, question, history_questions, previous_answer):
-        """返回特征值list"""
+        """返回特征值向量"""
         feature_vector = [question.has_pronoun(),
                           question.has_proper_noun(),
                           question.has_noun(),
@@ -417,16 +422,19 @@ class Configurator(object):
         config = self.dict_config['essentials']
         for k, v in config.items():
             with codecs.open(v, encoding='utf-8') as f:
+                d = ESSENTIALS_DICT[k]
                 logger.info('start to load %s from %s', k, v)
-                ESSENTIALS_DICT[k] = dict.fromkeys([line.strip() for line in f])
+                for line in f:
+                    d[line.strip()] = None
                 logger.info('finished loading %s, size=%s', k,
-                            len(ESSENTIALS_DICT[k]))
+                            len(d))
 
     def configure_word_similarity_calculator(self):
         config = self.dict_config['word_similarity_calculators']
         for name, kwargs in config.items():
             class_name = kwargs.pop('class')
             class_ = resolve(class_name)
+            # word_similarity_calculators[name] = None
             word_similarity_calculators[name] = class_(**kwargs)
 
     def configure_sentence_similarity_calculator(self):
