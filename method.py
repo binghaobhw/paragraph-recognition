@@ -157,13 +157,13 @@ class SentenceSimilarityCalculator(object):
                 score = self.score_cache[key]
                 logger.debug('sentence score from cache: %s', score)
                 return score
-        score = self._calculate(text_a, text_b)
+        score = self.do_calculate(text_a, text_b)
         if self.cache:
             self.score_cache[key] = score
             logger.debug('add sentence score into cache: %s', score)
         return score
 
-    def _calculate(self, text_a, text_b):
+    def do_calculate(self, text_a, text_b):
         score = 0.0
         text_a_len = 0
         for word in text_a.words_exclude_stop():
@@ -193,27 +193,64 @@ class WordSimilarityCalculator(object):
 
 class HowNetCalculator(WordSimilarityCalculator):
     glossary = {}
+    alpha = 1.6
+    beta = [0.5, 0.2, 0.17, 0.13]
+    gamma = 0.2
+    delta = 0.2
 
-    def __init__(self):
-        super(HowNetCalculator, self).__init__()
+    def __init__(self, glossary_file):
+        self.load_glossary(glossary_file)
 
     def load_glossary(self, glossary_file):
         with codecs.open(glossary_file, encoding='utf-8') as f:
             for line in f:
                 key, pos, description = line.split()
-            self.glossary[key] = description
+                word_description = WordDescription(key, description)
+                self.glossary[key] = word_description
 
     def calculate(self, word_a, word_b):
         score = 0.0
         if word_a in self.glossary and word_b in self.glossary:
-            pass
+            score = self.calculate_description(self.glossary[word_a], self.glossary[word_b])
         return score
 
-    def sememe_similarity(self):
+    def calculate_description(self, desc_a, desc_b):
+        score = 0.0
+        if desc_a.is_function_word == desc_b.is_function_word:
+            sim = [self.first_basic_sememe_similarity(desc_a.first_basic_sememe, desc_b.first_basic_sememe),
+                   self.other_basic_sememe_similarity(desc_a.other_basic_sememe, desc_b.other_basic_sememe),
+                   self.relation_sememe_similarity(desc_a.relation_sememe, desc_b.relation_sememe),
+                   self.relation_symbol_similarity(desc_a.relation_symbol, desc_b.relation_symbol)]
+            product = [sim[0]]
+            product.append(product[0] * sim[1])
+            product.append(product[1] * sim[2])
+            product.append(product[2] * sim[3])
+            score = reduce(lambda x, y: x+y, map(lambda (x, y): x*y,
+                                                 zip(product, self.beta)))
+        return score
+
+    def first_basic_sememe_similarity(self, sememe_a, sememe_b):
+        return self.sememe_similarity(sememe_a, sememe_b)
+
+    def other_basic_sememe_similarity(self, list_a, list_b):
         pass
 
-    def sememe_distance(self):
+    def relation_sememe_similarity(self, map_a, map_b):
         pass
+
+    def relation_symbol_similarity(self, map_a, map_b):
+        pass
+
+
+    def sememe_similarity(self, sememe_a, sememe_b):
+        distance = self.sememe_distance(sememe_a, sememe_b)
+        score = self.alpha / (self.alpha+distance) if distance > 0 else -1.0
+        return score
+
+
+    def sememe_distance(self, sememe_a, sememe_b):
+        distance = 0
+        return distance
 
 
 class WordDescription(object):
