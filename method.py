@@ -198,8 +198,9 @@ class HowNetCalculator(WordSimilarityCalculator):
     gamma = 0.2
     delta = 0.2
 
-    def __init__(self, glossary_file):
+    def __init__(self, glossary_file, sememe_tree_file):
         self.load_glossary(glossary_file)
+        self.sememe_tree = SememeTreeBuilder().build(sememe_tree_file)
 
     def load_glossary(self, glossary_file):
         with codecs.open(glossary_file, encoding='utf-8') as f:
@@ -241,16 +242,29 @@ class HowNetCalculator(WordSimilarityCalculator):
     def relation_symbol_similarity(self, map_a, map_b):
         pass
 
-
     def sememe_similarity(self, sememe_a, sememe_b):
         distance = self.sememe_distance(sememe_a, sememe_b)
         score = self.alpha / (self.alpha+distance) if distance > 0 else -1.0
         return score
 
-
     def sememe_distance(self, sememe_a, sememe_b):
-        distance = 0
-        return distance
+        path_a = self.sememe_tree.path(sememe_a)
+        id_b = sememe_b.id_
+        father_id_b = sememe_b.father
+        distance_b = 0  # b到首个公共节点的距离
+        while id_b != father_id_b:
+            if id_b in path_a:
+                distance_a = path_a.index(id_b)  # a到首个公共节点的距离
+                return distance_a + distance_b
+            father_b = self.sememe_tree[father_id_b]
+            id_b = father_b.id_
+            father_id_b = father_b.father
+            distance_b += 1
+        if id_b == father_id_b and id_b in path_a:
+                return path_a.index(id_b)
+        return -1
+
+
 
 
 class WordDescription(object):
@@ -288,15 +302,12 @@ class WordDescription(object):
             self.other_basic_sememe.append(get_chinese_sememe(sememe))
 
 
+def get_english_sememe(sememe):
+    return sememe.split('|')[0]
+
 
 def get_chinese_sememe(sememe):
     return sememe.split('|')[1]
-
-
-
-
-
-
 
 
 class Sememe(object):
@@ -311,6 +322,17 @@ class SememeTree(object):
         self.list_ = list_
         self.dict_ = dict_
 
+    def path(self, sememe):
+        id_ = sememe.id_
+        father_id = sememe.father
+        path = [sememe]
+        while id_ != father_id:
+            father = self.list_[father_id]
+            path.append(father)
+            id_ = father_id
+            father_id = father.father
+        return path
+
 
 class SememeTreeBuilder(object):
     def build(self, file_name):
@@ -321,14 +343,11 @@ class SememeTreeBuilder(object):
                 id_, content, father = line.split()
                 id_ = int(id_)
                 father = int(father)
-                key = content.split('|')[0]
+                key = get_english_sememe(content)
                 sememe = Sememe(id_, content, father)
                 sememe_list.append(sememe)
                 sememe_tree[key] = sememe
         return SememeTree(sememe_list, sememe_tree)
-
-
-
 
 
 class WordEmbeddingCalculator(WordSimilarityCalculator):
