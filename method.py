@@ -234,7 +234,20 @@ class HowNetCalculator(WordSimilarityCalculator):
         return self.sememe_similarity(sememe_a, sememe_b)
 
     def other_basic_sememe_similarity(self, list_a, list_b):
-        pass
+        if not list_a and not list_b:
+            return 1.0
+        score = 0.0
+        for text_a in list_a:
+            max = -1.0
+            for text_b in list_b:
+                temp = 0.0
+                if not text_a.startswith('(') and not text_b.startswith('('):
+                    temp = self.sememe_similarity(text_a, text_b)
+                elif text_a.startswith('(') and text_b.startswith('('):
+                    if text_a == text_b:
+                        temp = 1.0
+
+
 
     def relation_sememe_similarity(self, map_a, map_b):
         pass
@@ -242,15 +255,28 @@ class HowNetCalculator(WordSimilarityCalculator):
     def relation_symbol_similarity(self, map_a, map_b):
         pass
 
-    def sememe_similarity(self, sememe_a, sememe_b):
-        distance = self.sememe_distance(sememe_a, sememe_b)
-        score = self.alpha / (self.alpha+distance) if distance > 0 else -1.0
+
+    def set_similarity(self, set_a, set_b):
+        pass
+
+    def sememe_similarity(self, text_a, text_b):
+        is_a_specific_word = is_specific_word(text_a)
+        is_b_specific_word = is_specific_word(text_b)
+        if is_a_specific_word and is_b_specific_word:
+            return 1.0 if text_a == text_b else 0.0
+        if is_a_specific_word or is_b_specific_word:
+            return self.gamma
+        distance = self.sememe_distance(text_a, text_b)
+        score = self.alpha / (self.alpha+distance) if distance >= 0 else 0.0
         return score
 
-    def sememe_distance(self, sememe_a, sememe_b):
-        path_a = self.sememe_tree.path(sememe_a)
-        id_b = sememe_b.id_
-        father_id_b = sememe_b.father
+    def sememe_distance(self, text_a, text_b):
+        if text_a not in self.sememe_tree or text_b not in \
+                self.sememe_tree:
+            return -1
+        path_a = self.sememe_tree.path(text_a)
+        id_b = text_b.id_
+        father_id_b = text_b.father
         distance_b = 0  # b到首个公共节点的距离
         while id_b != father_id_b:
             if id_b in path_a:
@@ -263,8 +289,6 @@ class HowNetCalculator(WordSimilarityCalculator):
         if id_b == father_id_b and id_b in path_a:
                 return path_a.index(id_b)
         return -1
-
-
 
 
 class WordDescription(object):
@@ -309,6 +333,8 @@ def get_english_sememe(sememe):
 def get_chinese_sememe(sememe):
     return sememe.split('|')[1]
 
+def is_specific_word(text):
+    return text.startswith('(')
 
 class Sememe(object):
     def __init__(self, id_, content, father):
@@ -321,6 +347,9 @@ class SememeTree(object):
     def __init__(self, list_, dict_):
         self.list_ = list_
         self.dict_ = dict_
+
+    def __contains__(self, text):
+        return text in self.dict_
 
     def path(self, sememe):
         id_ = sememe.id_
