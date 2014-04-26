@@ -198,30 +198,44 @@ class HowNetCalculator(WordSimilarityCalculator):
     gamma = 0.2
     delta = 0.2
 
-    def __init__(self, glossary_file, sememe_tree_file):
-        self.load_glossary(glossary_file)
+    def __init__(self, sememe_tree_file, glossary_file):
         self.sememe_tree = SememeTreeBuilder().build(sememe_tree_file)
+        self.load_glossary(glossary_file)
 
     def load_glossary(self, glossary_file):
         with codecs.open(glossary_file, encoding='utf-8') as f:
             for line in f:
-                key, pos, description = line.split()
-                word_description = WordDescription(key, description)
-                self.glossary[key] = word_description
+                key, pos, concept = line.split()
+                word_description = WordConcept(key, concept)
+                if key in self.glossary:
+                    self.glossary[key].append(word_description)
+                else:
+                    self.glossary[key] = [word_description]
 
     def calculate(self, word_a, word_b):
-        score = 0.0
+        max_score = 0.0
         if word_a in self.glossary and word_b in self.glossary:
-            score = self.calculate_description(self.glossary[word_a], self.glossary[word_b])
-        return score
+            concepts_a = self.glossary[word_a]
+            concepts_b = self.glossary[word_b]
+            for concept_a in concepts_a:
+                for concept_b in concepts_b:
+                    score = self.calculate_concept_similarity(concept_a, concept_b)
+                    if max_score < score:
+                        max_score = score
+        return max_score
 
-    def calculate_description(self, desc_a, desc_b):
+    def calculate_concept_similarity(self, concept_a, concept_b):
         score = 0.0
-        if desc_a.is_function_word == desc_b.is_function_word:
-            sim = [self.first_basic_sememe_similarity(desc_a.first_basic_sememe, desc_b.first_basic_sememe),
-                   self.other_basic_sememe_similarity(desc_a.other_basic_sememe, desc_b.other_basic_sememe),
-                   self.relation_sememe_similarity(desc_a.relation_sememe, desc_b.relation_sememe),
-                   self.relation_symbol_similarity(desc_a.relation_symbol, desc_b.relation_symbol)]
+        if concept_a.is_function_word == concept_b.is_function_word:
+            sim = [
+                self.first_independent_sememe_similarity(
+                    concept_a.first_basic_sememe, concept_b.first_basic_sememe),
+                self.other_independent_sememe_similarity(
+                    concept_a.other_basic_sememe, concept_b.other_basic_sememe),
+                self.relation_sememe_similarity(concept_a.relation_sememe,
+                                                concept_b.relation_sememe),
+                self.symbol_sememe_similarity(concept_a.relation_symbol,
+                                              concept_b.relation_symbol)]
             product = [sim[0]]
             product.append(product[0] * sim[1])
             product.append(product[1] * sim[2])
@@ -230,40 +244,62 @@ class HowNetCalculator(WordSimilarityCalculator):
                                                  zip(product, self.beta)))
         return score
 
-    def first_basic_sememe_similarity(self, sememe_a, sememe_b):
+    def first_independent_sememe_similarity(self, sememe_a, sememe_b):
         return self.sememe_similarity(sememe_a, sememe_b)
 
-    def other_basic_sememe_similarity(self, list_a, list_b):
-        if not list_a and not list_b:
-            return 1.0
+    def other_independent_sememe_similarity(self, list_a, list_b):
         score = 0.0
-        for text_a in list_a:
-            max = -1.0
-            for text_b in list_b:
-                temp = 0.0
-                if not text_a.startswith('(') and not text_b.startswith('('):
-                    temp = self.sememe_similarity(text_a, text_b)
-                elif text_a.startswith('(') and text_b.startswith('('):
-                    if text_a == text_b:
-                        temp = 1.0
+        if not list_a or not list_b:
+            return score
+        sememe_score = {}
+        pop_sememes = {}
+        scores = []
+        for sememe_a in list_a:
+            for sememe_b in list_b:
+                score = self.sememe_similarity(sememe_a, sememe_b)
+                sememe_score[(sememe_a, sememe_b)] = score
+        while len(sememe_score) > 0:
+            max_score = 0.0
+            key = None
+            for (sememe_a, sememe_b), score in sememe_score.items():
+                if sememe_a in pop_sememes or sememe_b in pop_sememes:
+                    sememe_score.pop((sememe_a, sememe_b))
+                    continue
+                if max_score < score:
+                    max_score = score
+                    key = (sememe_a, sememe_b)
+            if key is not None:
+                pop_sememes[key[0]] = None
+                pop_sememes[key[1]] = None
+            scores.append(max_score)
+        score = sum(scores) / len(scores)
+        return score
 
-
+    def key_value_similarity(self, map_a, map_b):
+        score = 0.0
+        if not map_a or not map_b:
+            return score
+        scores = []
+        for key in map_a:
+            if key in map_b:
+                scores.append(self.sememe_similarity(map_a[key], map_b[key]))
+        if scores:
+            score = sum(scores) / len(scores)
+        return score
 
     def relation_sememe_similarity(self, map_a, map_b):
-        pass
+        return self.key_value_similarity(map_a, map_b)
 
-    def relation_symbol_similarity(self, map_a, map_b):
-        pass
-
-
-    def set_similarity(self, set_a, set_b):
-        pass
+    def symbol_sememe_similarity(self, map_a, map_b):
+        return self.key_value_similarity(map_a, map_b)
 
     def sememe_similarity(self, text_a, text_b):
         is_a_specific_word = is_specific_word(text_a)
         is_b_specific_word = is_specific_word(text_b)
+        # 两个都是具体词
         if is_a_specific_word and is_b_specific_word:
             return 1.0 if text_a == text_b else 0.0
+        # 有一个是具体词
         if is_a_specific_word or is_b_specific_word:
             return self.gamma
         distance = self.sememe_distance(text_a, text_b)
@@ -271,8 +307,7 @@ class HowNetCalculator(WordSimilarityCalculator):
         return score
 
     def sememe_distance(self, text_a, text_b):
-        if text_a not in self.sememe_tree or text_b not in \
-                self.sememe_tree:
+        if text_a not in self.sememe_tree or text_b not in self.sememe_tree:
             return -1
         path_a = self.sememe_tree.path(text_a)
         id_b = text_b.id_
@@ -281,35 +316,31 @@ class HowNetCalculator(WordSimilarityCalculator):
         while id_b != father_id_b:
             if id_b in path_a:
                 distance_a = path_a.index(id_b)  # a到首个公共节点的距离
-                return distance_a + distance_b
+                return distance_a + distance_b  # a到b的最短路径
             father_b = self.sememe_tree[father_id_b]
             id_b = father_b.id_
             father_id_b = father_b.father
             distance_b += 1
         if id_b == father_id_b and id_b in path_a:
-                return path_a.index(id_b)
+            return path_a.index(id_b)
         return -1
 
 
-class WordDescription(object):
-    def __init__(self, word, description):
-        self.other_basic_sememe = []
+class WordConcept(object):
+    def __init__(self, word, concept):
+        self.other_independent_sememe = []
         self.relation_sememe = {}
-        self.relation_symbol = {}
+        self.symbol_sememe = {}
         self.word = word
-        if description.startswith('{'):
+        if concept.startswith('{'):
             self.is_function_word = True
-            content = description[1: len(description)-1]
+            content = concept[1: len(concept)-1]
         else:
             self.is_function_word = False
-            content = description
+            content = concept
         sememes = content.split(',')
-        if content[0].isalpha():
-            self.first_basic_sememe = sememes.pop(0)
         for sememe in sememes:
-            if sememe.startswith('('):
-                self.other_basic_sememe.append(sememe)
-                continue
+            # 关系义原描述式
             s = sememe.split('=')
             if len(s) == 2:
                 attribute, value = s
@@ -317,13 +348,18 @@ class WordDescription(object):
                     value = get_chinese_sememe(value)
                 self.relation_sememe[attribute] = value
                 continue
-            if not sememe[0].isalpha():
-                a = sememe[1:]
-                if not a.startswith('('):
-                    a = get_chinese_sememe(a)
-                self.relation_symbol[sememe[0]] = a
+            # 基本义原描述式
+            if sememe.startswith('(') or sememe[0].isalpha():
+                self.other_independent_sememe.append(sememe)
                 continue
-            self.other_basic_sememe.append(get_chinese_sememe(sememe))
+            else:
+                # 关系符号描述式
+                symbol = sememe[0]
+                description = sememe[1:]
+                self.symbol_sememe[symbol] = description
+                continue
+            self.other_independent_sememe.append(get_chinese_sememe(sememe))
+        self.first_independent_sememe = self.other_independent_sememe.pop(0)
 
 
 def get_english_sememe(sememe):
@@ -372,10 +408,9 @@ class SememeTreeBuilder(object):
                 id_, content, father = line.split()
                 id_ = int(id_)
                 father = int(father)
-                key = get_english_sememe(content)
                 sememe = Sememe(id_, content, father)
                 sememe_list.append(sememe)
-                sememe_tree[key] = sememe
+                sememe_tree[content] = sememe
         return SememeTree(sememe_list, sememe_tree)
 
 
