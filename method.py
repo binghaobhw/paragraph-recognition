@@ -7,6 +7,8 @@ import math
 import os
 import sys
 import cPickle as pickle
+import re
+from sklearn import tree
 
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
@@ -199,13 +201,15 @@ class HowNetCalculator(WordSimilarityCalculator):
     delta = 0.2
 
     def __init__(self, sememe_tree_file, glossary_file):
-        self.sememe_tree = SememeTreeBuilder().build(sememe_tree_file)
+        self.sememe_tree = SememeTreeBuilder(sememe_tree_file).build()
         self.load_glossary(glossary_file)
 
     def load_glossary(self, glossary_file):
+        white_space = re.compile(ur'\s+')
         with codecs.open(glossary_file, encoding='utf-8') as f:
             for line in f:
-                key, pos, concept = line.split()
+                line = line.strip()
+                key, pos, concept = white_space.split(line, 2)
                 word_description = WordConcept(key, concept)
                 if key in self.glossary:
                     self.glossary[key].append(word_description)
@@ -213,6 +217,12 @@ class HowNetCalculator(WordSimilarityCalculator):
                     self.glossary[key] = [word_description]
 
     def calculate(self, word_a, word_b):
+        """Return the similarity of two words.
+
+        :param word_a: unicode
+        :param word_b: unicode
+        :return: float
+        """
         max_score = 0.0
         if word_a in self.glossary and word_b in self.glossary:
             concepts_a = self.glossary[word_a]
@@ -225,17 +235,25 @@ class HowNetCalculator(WordSimilarityCalculator):
         return max_score
 
     def calculate_concept_similarity(self, concept_a, concept_b):
+        """Return the similarity of two concepts.
+
+        :param concept_a: WordConcept
+        :param concept_b: WordConcept
+        :return: float
+        """
         score = 0.0
         if concept_a.is_function_word == concept_b.is_function_word:
             sim = [
                 self.first_independent_sememe_similarity(
-                    concept_a.first_basic_sememe, concept_b.first_basic_sememe),
+                    concept_a.first_independent_sememe,
+                    concept_b.first_independent_sememe),
                 self.other_independent_sememe_similarity(
-                    concept_a.other_basic_sememe, concept_b.other_basic_sememe),
+                    concept_a.other_independent_sememe,
+                    concept_b.other_independent_sememe),
                 self.relation_sememe_similarity(concept_a.relation_sememe,
                                                 concept_b.relation_sememe),
-                self.symbol_sememe_similarity(concept_a.relation_symbol,
-                                              concept_b.relation_symbol)]
+                self.symbol_sememe_similarity(concept_a.symbol_sememe,
+                                              concept_b.symbol_sememe)]
             product = [sim[0]]
             product.append(product[0] * sim[1])
             product.append(product[1] * sim[2])
@@ -245,9 +263,21 @@ class HowNetCalculator(WordSimilarityCalculator):
         return score
 
     def first_independent_sememe_similarity(self, sememe_a, sememe_b):
+        """Return the first-independent-sememe similarity of two concepts.
+
+        :param sememe_a: unicode
+        :param sememe_b: unicode
+        :return: float
+        """
         return self.sememe_similarity(sememe_a, sememe_b)
 
     def other_independent_sememe_similarity(self, list_a, list_b):
+        """Return the other-independent-sememe similarity of two concepts.
+
+        :param list_a: list[unicode]
+        :param list_b: list[unicode]
+        :return: float
+        """
         score = 0.0
         if not list_a or not list_b:
             return score
@@ -276,6 +306,12 @@ class HowNetCalculator(WordSimilarityCalculator):
         return score
 
     def key_value_similarity(self, map_a, map_b):
+        """Return the similarity of two key-value maps.
+
+        :param map_a: dict(unicode, unicode)
+        :param map_b: dict(unicode, unicode)
+        :return: float
+        """
         score = 0.0
         if not map_a or not map_b:
             return score
@@ -288,30 +324,56 @@ class HowNetCalculator(WordSimilarityCalculator):
         return score
 
     def relation_sememe_similarity(self, map_a, map_b):
+        """Return the relation-sememe similarity of two concepts.
+
+        :param map_a: dict(unicode, unicode)
+        :param map_b: dict(unicode, unicode)
+        :return: float
+        """
         return self.key_value_similarity(map_a, map_b)
 
     def symbol_sememe_similarity(self, map_a, map_b):
+        """Return the symbol-sememe similarity of two concepts.
+
+        :param map_a: dict(unicode, unicode)
+        :param map_b: dict(unicode, unicode)
+        :return: float
+        """
         return self.key_value_similarity(map_a, map_b)
 
-    def sememe_similarity(self, text_a, text_b):
-        is_a_specific_word = is_specific_word(text_a)
-        is_b_specific_word = is_specific_word(text_b)
+    def sememe_similarity(self, sememe_a, sememe_b):
+        """Return the similarity of two sememes.
+
+        :param sememe_a: unicode
+        :param sememe_b: unicode
+        :return: float
+        """
+        is_a_specific_word = is_specific_word(sememe_a)
+        is_b_specific_word = is_specific_word(sememe_b)
         # 两个都是具体词
         if is_a_specific_word and is_b_specific_word:
-            return 1.0 if text_a == text_b else 0.0
+            return 1.0 if sememe_a == sememe_b else 0.0
         # 有一个是具体词
         if is_a_specific_word or is_b_specific_word:
             return self.gamma
-        distance = self.sememe_distance(text_a, text_b)
+        distance = self.sememe_distance(sememe_a, sememe_b)
         score = self.alpha / (self.alpha+distance) if distance >= 0 else 0.0
         return score
 
-    def sememe_distance(self, text_a, text_b):
-        if text_a not in self.sememe_tree or text_b not in self.sememe_tree:
+    def sememe_distance(self, sememe_a, sememe_b):
+        """Return the distance between two sememes.
+
+        :param sememe_a: unicode
+        :param sememe_b: unicode
+        :return: int
+        """
+        if sememe_a not in self.sememe_tree or sememe_b not in self.sememe_tree:
             return -1
-        path_a = self.sememe_tree.path(text_a)
-        id_b = text_b.id_
-        father_id_b = text_b.father
+        sememe_a = self.sememe_tree[sememe_a]
+        sememe_b = self.sememe_tree[sememe_b]
+        path_a = self.sememe_tree.path(sememe_a)
+        id_b = sememe_b.id_
+        father_id_b = sememe_b.father
         distance_b = 0  # b到首个公共节点的距离
         while id_b != father_id_b:
             if id_b in path_a:
@@ -340,37 +402,31 @@ class WordConcept(object):
             content = concept
         sememes = content.split(',')
         for sememe in sememes:
-            # 关系义原描述式
+            # relation sememe description
             s = sememe.split('=')
             if len(s) == 2:
                 attribute, value = s
-                if not value.startswith('('):
-                    value = get_chinese_sememe(value)
                 self.relation_sememe[attribute] = value
                 continue
-            # 基本义原描述式
+            # other independent sememe description
             if sememe.startswith('(') or sememe[0].isalpha():
                 self.other_independent_sememe.append(sememe)
                 continue
             else:
-                # 关系符号描述式
+                # symbol sememe description
                 symbol = sememe[0]
                 description = sememe[1:]
                 self.symbol_sememe[symbol] = description
                 continue
-            self.other_independent_sememe.append(get_chinese_sememe(sememe))
-        self.first_independent_sememe = self.other_independent_sememe.pop(0)
+            logger.error('cannot handle description %s', sememe)
+            raise RuntimeError(u'cannot handle description {}'.format(sememe))
+        if len(self.other_independent_sememe) > 0:
+            self.first_independent_sememe = self.other_independent_sememe.pop(0)
 
-
-def get_english_sememe(sememe):
-    return sememe.split('|')[0]
-
-
-def get_chinese_sememe(sememe):
-    return sememe.split('|')[1]
 
 def is_specific_word(text):
     return text.startswith('(')
+
 
 class Sememe(object):
     def __init__(self, id_, content, father):
@@ -387,21 +443,27 @@ class SememeTree(object):
     def __contains__(self, text):
         return text in self.dict_
 
+    def __getitem__(self, text):
+        return self.list_[text] if isinstance(text, int) else self.dict_[text]
+
     def path(self, sememe):
         id_ = sememe.id_
         father_id = sememe.father
-        path = [sememe]
+        path = [id_]
         while id_ != father_id:
             father = self.list_[father_id]
-            path.append(father)
             id_ = father_id
             father_id = father.father
+            path.append(id_)
         return path
 
 
 class SememeTreeBuilder(object):
-    def build(self, file_name):
-        with codecs.open(file_name, encoding='utf-8') as f:
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+    def build(self):
+        with codecs.open(self.file_name, encoding='utf-8') as f:
             sememe_list = []
             sememe_tree = {}
             for line in f:
@@ -410,6 +472,9 @@ class SememeTreeBuilder(object):
                 father = int(father)
                 sememe = Sememe(id_, content, father)
                 sememe_list.append(sememe)
+                # 跳过已有义原内容
+                if content in sememe_tree:
+                    continue
                 sememe_tree[content] = sememe
         return SememeTree(sememe_list, sememe_tree)
 
@@ -484,40 +549,74 @@ class DeBoni(AbstractMethod):
         return follow_up
 
 
+def field_to_right_type(fields):
+    """convert field into right type.
+
+    :param fields: list[unicode]
+    :return: list[bool | float]
+    """
+    result = []
+    for field in fields:
+        if field.isdigit():
+            result.append(bool(int(field)))
+        else:
+            result.append(float(field))
+    return result
+
+
 class FanYang(AbstractMethod):
     classifier = None
-    root_node = None
+    feature_names = [u'pronoun', u'proper_noun', u'noun', u'verb',
+                     u'max_sentence_similarity']
 
-    def __init__(self, sentence_similarity_calculator, train_data_file):
+    def __init__(self, sentence_similarity_calculator, train_data_file,
+                 feature_names=None):
         super(FanYang, self).__init__(sentence_similarity_calculator)
         self.train_data_file = train_data_file
+        if feature_names:
+            for feature_name in self.feature_names:
+                if feature_name not in feature_names:
+                    self.feature_names.remove(feature_name)
+        self.train()
 
     def train(self):
-        pass
+        features = []
+        labels = []
+        with codecs.open(self.train_data_file, encoding='utf-8') as f:
+            f.next()
+            for line in f:
+                line = line.strip()
+                fields = line.split(',', len(self.feature_names))
+                fields = field_to_right_type(fields[:-1])
+                features.append(fields[:-1])
+                labels.append(fields[-1])
+        self.classifier = tree.DecisionTreeClassifier().fit(features, labels)
 
     def is_follow_up(self, question, history_questions, previous_answer):
-        feature_vector = self.features(question, history_questions,
-                                       previous_answer)
-        case = [u'pronoun={}'.format(feature_vector[0]),
-                u'proper_noun={}'.format(feature_vector[1]),
-                u'noun={}'.format(feature_vector[2]),
-                u'verb={}'.format(feature_vector[3]),
-                u'max_sentence_similarity={}'.format(feature_vector[4])]
-        if self.classifier is None:
-            self.train()
-        result = self.classifier.classify(self.root_node, case)
-        for i in result:
-            pass
+        features = self.features(question, history_questions, previous_answer)
+        self.classifier.predict([features])
 
     def features(self, question, history_questions, previous_answer):
-        """返回特征值向量"""
-        feature_vector = [question.has_pronoun(),
-                          question.has_proper_noun(),
-                          question.has_noun(),
-                          question.has_verb(),
-                          self.max_sentence_similarity(question,
-                                                       history_questions)]
-        return feature_vector
+        """Return features of question.
+
+        :param question: AnalyzedSentence
+        :param history_questions: list[AnalyzedSentence]
+        :param previous_answer: AnalyzedSentence
+        :return: list[bool | float]
+        """
+        features = []
+        if u'pronoun' in self.feature_names:
+            features.append(question.has_pronoun())
+        if u'proper_noun' in self.feature_names:
+            features.append(question.has_proper_noun())
+        if u'noun' in self.feature_names:
+            features.append(question.has_noun())
+        if u'verb' in self.feature_names:
+            features.append(question.has_verb())
+        if u'max_sentence_similarity' in self.feature_names:
+            features.append(self.max_sentence_similarity(
+                question, history_questions))
+        return features
 
 
 def get_method(name):

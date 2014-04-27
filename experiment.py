@@ -120,7 +120,7 @@ def test(method_, file_name='data/predicted-result.txt'):
             result = 'F'
             logger.info('start to test %s', prefix)
             if not method_.is_follow_up(question, history_questions,
-                                       previous_answer):
+                                        previous_answer):
                 result = 'N'
                 history_questions = []
             logger.info('finished testing %s', prefix)
@@ -310,8 +310,8 @@ def train_data(method_, train_set_file_name, train_data_file_name):
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
         last_is_answer = False
-        output.write('"","result","pronoun","proper_noun","noun","verb",'
-                     '"max_sentence_similarity"\n')
+        output.write('num,result,pronoun,proper_noun,noun,verb,'
+                     'max_sentence_similarity\n')
         for line in train_set:
             line = line.strip()
             if line == '':
@@ -328,7 +328,7 @@ def train_data(method_, train_set_file_name, train_data_file_name):
                 last_is_answer else None
             features = method_.features(question, history_questions,
                                         previous_answer)
-            output.write('"{0}",{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4]:.3f}\n'.
+            output.write('{0},{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4]:.3f}\n'.
                          format(num, result, features))
             history_questions.append(question)
             last_is_answer = False
