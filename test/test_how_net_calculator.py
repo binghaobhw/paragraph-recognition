@@ -4,15 +4,18 @@ from unittest import TestCase
 from mock import patch
 from method import HowNetCalculator, SememeTreeBuilder, WordConcept
 
+sememe_tree_file = '../data/whole.dat'
+glossary_file = '../data/glossary.dat'
+
 
 class TestSememeTreeBuilder(TestCase):
     def test_build(self):
-        SememeTreeBuilder('../data/WHOLE.DAT').build()
+        SememeTreeBuilder(sememe_tree_file).build()
 
 
 class TestSememeTree(TestCase):
     def test_path(self):
-        sememe_tree = SememeTreeBuilder('../data/WHOLE.DAT').build()
+        sememe_tree = SememeTreeBuilder(sememe_tree_file).build()
         path = sememe_tree.path(sememe_tree[u'become|成为'])
         self.assertTrue(len(path) == 6)
 
@@ -29,12 +32,10 @@ class TestWordConcept(TestCase):
 
 
 class TestHowNetCalculator(TestCase):
-    how_net_calculator = HowNetCalculator('../data/WHOLE.DAT',
-                                          '../data/glossary.dat')
+    how_net_calculator = HowNetCalculator(sememe_tree_file, glossary_file)
     @patch.object(SememeTreeBuilder, 'build', return_value=None)
     def test_load_glossary(self, mock_build):
-        how_net_calculator = HowNetCalculator('../data/WHOLE.DAT',
-                                              '../data/glossary.dat')
+        HowNetCalculator(sememe_tree_file, glossary_file)
         mock_build.assert_called()
 
     def test_sememe_distance(self):

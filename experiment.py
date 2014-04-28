@@ -220,21 +220,20 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
         f.write(json.dumps(result))
 
 
-class DataSetGenerator():
-    def __init__(self, data_set_file_name='data/test-set.txt',
-                 answer_file_name='data/true-result.txt'):
+class DatasetGenerator(object):
+    def __init__(self, dataset_file='data/test-set.txt',
+                 label_file='data/true-result.txt'):
         self.result_pattern = u'{}{}:{}\n'
         self.queue = deque()
         self.question_num = 1
         self.answer_num = 1
-        self.data_set_file_name = data_set_file_name
-        self.answer_file_name = answer_file_name
+        self.dataset_file = dataset_file
+        self.label_file = label_file
 
     def generate_paragraph(self, paragraph):
         paragraph_lines = [self.result_pattern.format(
             'Q', self.question_num,  paragraph.question.title)]
-        result_lines = [self.result_pattern.format('Q', self.question_num,
-                                                   'N')]
+        label_lines = [self.result_pattern.format('Q', self.question_num, 0)]
         self.question_num += 1
         for reply in paragraph.replies:
             if reply.is_deleted == 1:
@@ -242,22 +241,37 @@ class DataSetGenerator():
             if reply.is_question():
                 test_line = self.result_pattern.format('Q',  self.question_num,
                                                        reply.content)
-                result_line = self.result_pattern.format(
-                    'Q', self.question_num, 'F')
-                result_lines.append(result_line)
+                label_line = self.result_pattern.format('Q',
+                                                         self.question_num, 1)
+                label_lines.append(label_line)
                 self.question_num += 1
             else:
                 test_line = self.result_pattern.format('A', self.answer_num,
                                                        reply.content)
                 self.answer_num += 1
             paragraph_lines.append(test_line)
-        return paragraph_lines, result_lines
+        return paragraph_lines, label_lines
 
     def generate(self):
+        """generate dataset and answer.
+
+        dataset format:
+            Q1:question1
+            A1:answer1
+            Q2:question2
+
+            Q3:question3
+            A2:answer2
+
+        answer format: 0: new 1: follow-up
+            Q1:0
+            Q2:1
+            Q3:0
+        """
         previous_category_id = None
-        with codecs.open(self.data_set_file_name, encoding='utf-8',
+        with codecs.open(self.dataset_file, encoding='utf-8',
                          mode='wb') as data_set, codecs.open(
-                self.answer_file_name, encoding='utf-8', mode='wb') as result:
+                self.label_file, encoding='utf-8', mode='wb') as result:
             logger.info('start to generate data set')
             for paragraph in Session.query(Paragraph).filter(
                     Paragraph.paragraph_id <= 600).filter(
@@ -280,7 +294,7 @@ class DataSetGenerator():
                     if paragraph_in_queue.question.category_id == \
                             previous_category_id:
                         logger.debug('same category id again, put %s into '
-                                    'queue', paragraph_in_queue.paragraph_id)
+                                     'queue', paragraph_in_queue.paragraph_id)
                         self.queue.append(paragraph_in_queue)
                     else:
                         logger.debug('dequeue')
@@ -397,7 +411,7 @@ def main(argv):
             show_usage()
             return
         elif opt in ('-g', '--generate'):
-            data_set_generator = DataSetGenerator()
+            data_set_generator = DatasetGenerator()
             data_set_generator.generate()
         elif opt in ('-t', '--test'):
             method.configure(method_config)

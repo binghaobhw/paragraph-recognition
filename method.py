@@ -515,11 +515,20 @@ class AbstractMethod(object):
         self.sentence_similarity_calculator = sentence_similarity_calculator
 
     def is_follow_up(self, question, history_questions, previous_answer):
+        """Predict whether the question is follow-up.
+
+        :param question: AnalyzedSentence
+        :param history_questions: list[AnalyzedSentence]
+        :param previous_answer: AnalyzedSentence
+        :return: bool
+        """
         pass
 
     def max_sentence_similarity(self, question, history_questions):
         # sentence similarity
         max_sentence_score = 0.0
+        if not history_questions:
+            return max_sentence_score
         for history_question in history_questions:
             score = self.sentence_similarity_calculator.calculate(
                 question, history_question)
@@ -550,7 +559,7 @@ class DeBoni(AbstractMethod):
 
 
 def field_to_right_type(fields):
-    """convert field into right type.
+    """Convert field into right type.
 
     :param fields: list[unicode]
     :return: list[bool | float]
@@ -594,7 +603,8 @@ class FanYang(AbstractMethod):
 
     def is_follow_up(self, question, history_questions, previous_answer):
         features = self.features(question, history_questions, previous_answer)
-        self.classifier.predict([features])
+        predictions = self.classifier.predict([features])
+        return bool(predictions[0])
 
     def features(self, question, history_questions, previous_answer):
         """Return features of question.
@@ -689,4 +699,55 @@ def resolve(class_name):
 
 
 def configure(dict_config):
+    """Configure methods.
+
+    :param dict_config: dict
+
+    example:
+        method_config = {
+            'essentials': {
+                'third_person_pronoun': 'data/third-person-pronoun.txt',
+                'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
+                'cue_word': 'data/cue-word.txt',
+                'stop_word': 'data/stop-word.txt'
+            },
+            'word_similarity_calculators': {
+                'word_embedding': {
+                    'class': 'WordEmbeddingCalculator',
+                    'vector_file_name': 'data/baike-50.vec.txt'
+                },
+                'how_net': {
+                    'class': 'HowNetCalculator',
+                    'sememe_tree_file': 'data/whole.dat',
+                    'glossary_file': 'data/glossary.dat'
+                }
+            },
+            'sentence_similarity_calculator': {
+                'ssc_with_word_embedding': {
+                    'cache': True,
+                    'cache_file_name': 'data/sentence-score-cache-1',
+                    'word_similarity_calculator': 'word_embedding'
+                },
+                'ssc_with_how_net': {
+                    'cache': True,
+                    'cache_file_name': 'data/sentence-score-cache-2',
+                    'word_similarity_calculator': 'how_net'
+                }
+            },
+            'method': {
+                'de_boni': {
+                    'class': 'DeBoni',
+                    'sentence_similarity_calculator': 'ssc_with_word_embedding'
+                },
+                'fan_yang': {
+                    'class': 'FanYang',
+                    'sentence_similarity_calculator': 'ssc_with_how_net',
+                    'train_data_file': 'data/train-data.csv'
+                }
+            }
+        }
+        configure(method_config)
+        method_ = get_method('fan_yang')
+        method_.is_follow_up(question, history_questions, previous_answer)
+    """
     Configurator(dict_config).configure()
