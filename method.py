@@ -6,7 +6,7 @@ import logging
 import math
 import os
 import sys
-import cPickle as pickle
+import cPickle
 import re
 from sklearn import tree
 
@@ -134,22 +134,21 @@ class AnalyzedSentence(object):
 class SentenceSimilarityCalculator(object):
     score_cache = {}
 
-    def __init__(self, word_similarity_calculator, cache=False,
-                 cache_file_name=''):
+    def __init__(self, word_similarity_calculator, cache_filename=None):
         self.word_similarity_calculator = word_similarity_calculator
-        self.cache = cache
-        self.cache_file_name = cache_file_name
-        if self.cache and os.path.isfile(self.cache_file_name):
-            with open(self.cache_file_name, 'rb') as f:
-                logger.info('start to load score cache')
-                self.score_cache = pickle.load(f)
+        self.cache_filename = cache_filename
+        self.cache = True if self.cache_filename else False
+        if self.cache and os.path.isfile(self.cache_filename):
+            with open(self.cache_filename, 'rb') as f:
+                logger.info('start to load %s', self.cache_filename)
+                self.score_cache = cPickle.load(f)
                 logger.info('finished loading score cache')
 
     def __del__(self):
         if self.score_cache and self.cache:
-            with open(self.cache_file_name, 'wb') as f:
+            with open(self.cache_filename, 'wb') as f:
                 logger.info('start to save score cache')
-                pickle.dump(self.score_cache, f)
+                cPickle.dump(self.score_cache, f, cPickle.HIGHEST_PROTOCOL)
                 logger.info('finished saving score cache')
 
     def calculate(self, text_a, text_b):
@@ -201,6 +200,7 @@ class HowNetCalculator(WordSimilarityCalculator):
     delta = 0.2
 
     def __init__(self, sememe_tree_file, glossary_file):
+        super(HowNetCalculator, self).__init__()
         self.sememe_tree = SememeTreeBuilder(sememe_tree_file).build()
         self.load_glossary(glossary_file)
 
@@ -417,9 +417,6 @@ class WordConcept(object):
                 symbol = sememe[0]
                 description = sememe[1:]
                 self.symbol_sememe[symbol] = description
-                continue
-            logger.error('cannot handle description %s', sememe)
-            raise RuntimeError(u'cannot handle description {}'.format(sememe))
         if len(self.other_independent_sememe) > 0:
             self.first_independent_sememe = self.other_independent_sememe.pop(0)
 
@@ -578,25 +575,46 @@ class FanYang(AbstractMethod):
     feature_names = [u'pronoun', u'proper_noun', u'noun', u'verb',
                      u'max_sentence_similarity']
 
-    def __init__(self, sentence_similarity_calculator, train_data_file,
-                 feature_names=None):
+    def __init__(self, sentence_similarity_calculator, train_data_filename,
+                 feature_names=None, classifier_filename=None):
         super(FanYang, self).__init__(sentence_similarity_calculator)
-        self.train_data_file = train_data_file
+        self.train_data_filename = train_data_filename
+        self.classifier_filename = classifier_filename
         if feature_names:
             for feature_name in self.feature_names:
                 if feature_name not in feature_names:
                     self.feature_names.remove(feature_name)
-        self.train()
+        if self.classifier_filename and \
+                os.path.isfile(self.classifier_filename):
+            self.load_classifier()
+        else:
+            self.train()
+
+    def __del__(self):
+        if self.classifier_filename:
+            self.save_classifier()
+
+    def load_classifier(self):
+        with open(self.classifier_filename, 'rb') as f:
+            logger.info('start to load %', self.classifier_filename)
+            self.classifier = cPickle.load(f)
+            logger.info('finished load classifier')
+
+    def save_classifier(self):
+        with open(self.classifier_filename, 'wb') as f:
+            logger.info('start to save classifier')
+            cPickle.dump(self.classifier, f, cPickle.HIGHEST_PROTOCOL)
+            logger.info('finished save classifier')
 
     def train(self):
         features = []
         labels = []
-        with codecs.open(self.train_data_file, encoding='utf-8') as f:
+        with codecs.open(self.train_data_filename, encoding='utf-8') as f:
             f.next()
             for line in f:
                 line = line.strip()
                 fields = line.split(',', len(self.feature_names))
-                fields = field_to_right_type(fields[:-1])
+                fields = field_to_right_type(fields)
                 features.append(fields[:-1])
                 labels.append(fields[-1])
         self.classifier = tree.DecisionTreeClassifier().fit(features, labels)
@@ -640,8 +658,9 @@ class Configurator(object):
         self.dict_config = dict_config
 
     def configure(self):
-        word_similarity_calculators.clear()
         methods.clear()
+        sentence_similarity_calculators.clear()
+        word_similarity_calculators.clear()
         self.configure_essentials()
         self.configure_word_similarity_calculator()
         self.configure_sentence_similarity_calculator()
@@ -663,7 +682,6 @@ class Configurator(object):
         for name, kwargs in config.items():
             class_name = kwargs.pop('class')
             class_ = resolve(class_name)
-            # word_similarity_calculators[name] = None
             word_similarity_calculators[name] = class_(**kwargs)
 
     def configure_sentence_similarity_calculator(self):
@@ -712,10 +730,6 @@ def configure(dict_config):
                 'stop_word': 'data/stop-word.txt'
             },
             'word_similarity_calculators': {
-                'word_embedding': {
-                    'class': 'WordEmbeddingCalculator',
-                    'vector_file_name': 'data/baike-50.vec.txt'
-                },
                 'how_net': {
                     'class': 'HowNetCalculator',
                     'sememe_tree_file': 'data/whole.dat',
@@ -723,26 +737,17 @@ def configure(dict_config):
                 }
             },
             'sentence_similarity_calculator': {
-                'ssc_with_word_embedding': {
-                    'cache': True,
-                    'cache_file_name': 'data/sentence-score-cache-1',
-                    'word_similarity_calculator': 'word_embedding'
-                },
                 'ssc_with_how_net': {
-                    'cache': True,
-                    'cache_file_name': 'data/sentence-score-cache-2',
-                    'word_similarity_calculator': 'how_net'
+                    'word_similarity_calculator': 'how_net',
+                    'cache_filename': 'data/sentence-score.cache'
                 }
             },
             'method': {
-                'de_boni': {
-                    'class': 'DeBoni',
-                    'sentence_similarity_calculator': 'ssc_with_word_embedding'
-                },
                 'fan_yang': {
                     'class': 'FanYang',
                     'sentence_similarity_calculator': 'ssc_with_how_net',
-                    'train_data_file': 'data/train-data.csv'
+                    'train_data_filename': 'data/train-set.txt',
+                    'classifier_filename': 'data/fan-yang.classifier'
                 }
             }
         }

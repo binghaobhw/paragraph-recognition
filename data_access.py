@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-__author__ = 'wilfredwang'
 from sqlalchemy import create_engine
 from sqlalchemy import Column
 from sqlalchemy import func

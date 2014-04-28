@@ -2,15 +2,16 @@
 # coding: utf-8
 from unittest import TestCase
 from mock import patch
-from method import HowNetCalculator, SememeTreeBuilder, WordConcept
+from method import HowNetCalculator, SememeTreeBuilder, WordConcept, SememeTree
 
-sememe_tree_file = '../data/whole.dat'
-glossary_file = '../data/glossary.dat'
+sememe_tree_file = 'data/whole.dat'
+glossary_file = 'data/glossary.dat'
 
 
 class TestSememeTreeBuilder(TestCase):
     def test_build(self):
-        SememeTreeBuilder(sememe_tree_file).build()
+        result = SememeTreeBuilder(sememe_tree_file).build()
+        self.assertTrue(isinstance(result, SememeTree))
 
 
 class TestSememeTree(TestCase):

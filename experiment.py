@@ -17,6 +17,8 @@ from method import AnalyzedSentence
 import method
 
 logger = logging.getLogger(LOG_PROJECT_NAME + '.experiment')
+logger.addHandler(logging.NullHandler())
+
 LTP_URL = 'http://api.ltp-cloud.com/analysis'
 API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
 FORMAT = 'json'
@@ -221,14 +223,14 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
 
 
 class DatasetGenerator(object):
-    def __init__(self, dataset_file='data/test-set.txt',
-                 label_file='data/true-result.txt'):
+    def __init__(self, dataset_filename='data/test-set.txt',
+                 label_filename='data/label.txt'):
         self.result_pattern = u'{}{}:{}\n'
         self.queue = deque()
         self.question_num = 1
         self.answer_num = 1
-        self.dataset_file = dataset_file
-        self.label_file = label_file
+        self.dataset_filename = dataset_filename
+        self.label_filename = label_filename
 
     def generate_paragraph(self, paragraph):
         paragraph_lines = [self.result_pattern.format(
@@ -252,7 +254,7 @@ class DatasetGenerator(object):
             paragraph_lines.append(test_line)
         return paragraph_lines, label_lines
 
-    def generate(self):
+    def generate(self, num):
         """generate dataset and answer.
 
         dataset format:
@@ -267,28 +269,32 @@ class DatasetGenerator(object):
             Q1:0
             Q2:1
             Q3:0
+
+        :param num: int, number of paragraphs
         """
         previous_category_id = None
-        with codecs.open(self.dataset_file, encoding='utf-8',
-                         mode='wb') as data_set, codecs.open(
-                self.label_file, encoding='utf-8', mode='wb') as result:
-            logger.info('start to generate data set')
+        with codecs.open(self.dataset_filename, encoding='utf-8', mode='wb') \
+                as dataset_file, codecs.open(self.label_filename, encoding='utf-8',
+                                        mode='wb') as label_file:
+            logger.info('start to generate dataset, limit %s', num)
             for paragraph in Session.query(Paragraph).filter(
-                    Paragraph.paragraph_id <= 600).filter(
-                        Paragraph.is_deleted == 0).all():
-                # 当前分类与上一话段分类一样，先不写，入队列
+                    Paragraph.is_deleted == 0).order_by(
+                    Paragraph.paragraph_id).limit(num):
+                # When current question has same category with the previous,
+                # put it into queue.
                 if paragraph.question.category_id == previous_category_id:
                     logger.debug('same category id, put %s into queue',
                                 paragraph.paragraph_id)
                     self.queue.append(paragraph)
                     continue
-                paragraph_lines, result_lines = self.generate_paragraph(
+                paragraph_lines, label_lines = self.generate_paragraph(
                     paragraph)
                 paragraph_lines.append('\n')
-                data_set.writelines(paragraph_lines)
-                result.writelines(result_lines)
+                dataset_file.writelines(paragraph_lines)
+                label_file.writelines(label_lines)
                 previous_category_id = paragraph.question.category_id
-                # 看队列头是否能写
+                # Output the head of queue when its category is different with
+                # the previous, otherwise put into queue again.
                 if len(self.queue) > 0:
                     paragraph_in_queue = self.queue.popleft()
                     if paragraph_in_queue.question.category_id == \
@@ -298,35 +304,37 @@ class DatasetGenerator(object):
                         self.queue.append(paragraph_in_queue)
                     else:
                         logger.debug('dequeue')
-                        paragraph_lines, result_lines = self.\
+                        paragraph_lines, label_lines = self.\
                             generate_paragraph(paragraph_in_queue)
                         paragraph_lines.append('\n')
-                        data_set.writelines(paragraph_lines)
-                        result.writelines(result_lines)
+                        dataset_file.writelines(paragraph_lines)
+                        label_file.writelines(label_lines)
                         previous_category_id = paragraph_in_queue.question.\
                             category_id
             for paragraph_in_queue in self.queue:
-                paragraph_lines, result_lines = self.generate_paragraph(
+                paragraph_lines, label_lines = self.generate_paragraph(
                     paragraph_in_queue)
                 paragraph_lines.append('\n')
-                data_set.writelines(paragraph_lines)
-                result.writelines(result_lines)
+                dataset_file.writelines(paragraph_lines)
+                label_file.writelines(label_lines)
             logger.info('finished generating data set')
 
 
-def train_data(method_, train_set_file_name, train_data_file_name):
-    with codecs.open(train_set_file_name, encoding='utf-8') as train_set, \
-            codecs.open('data/true-result.txt', encoding='utf-8') as \
-                    result_file, codecs.open(train_data_file_name,
-                                             encoding='utf-8', mode='wb') as \
-            output:
+def train_data(method_, dataset_file_name, label_file_name,
+               train_set_file_name):
+    with codecs.open(dataset_file_name, encoding='utf-8') as dataset_file, \
+            codecs.open(label_file_name, encoding='utf-8') as label_file, \
+            codecs.open(train_set_file_name, encoding='utf-8', mode='wb') as \
+            train_set_file:
         context_window = 5
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
         last_is_answer = False
-        output.write('num,result,pronoun,proper_noun,noun,verb,'
-                     'max_sentence_similarity\n')
-        for line in train_set:
+        feature_names = method_.feature_names
+        head = ','.join(feature_names)
+        head = '{},label\n'.format(head)
+        train_set_file.write(head)
+        for line in dataset_file:
             line = line.strip()
             if line == '':
                 continue
@@ -334,18 +342,40 @@ def train_data(method_, train_set_file_name, train_data_file_name):
                 previous_answer_text = line.split(':', 1)[1]
                 last_is_answer = True
                 continue
-            result = result_file.next().strip().split(':', 1)[1]
-            [prefix, question_text] = line.split(':', 1)
-            num = prefix[1:]
+            label = label_file.next().strip().split(':', 1)[1]
+            question_text = line.split(':', 1)[1]
             question = get_analyzed_result(question_text)
             previous_answer = get_analyzed_result(previous_answer_text) if \
                 last_is_answer else None
             features = method_.features(question, history_questions,
                                         previous_answer)
-            output.write('{0},{1},{2[0]},{2[1]},{2[2]},{2[3]},{2[4]:.3f}\n'.
-                         format(num, result, features))
+            train_data_line = to_literal(features + [label])
+            train_data_line = ','.join(train_data_line)
+            train_set_file.write('{}\n'.format(train_data_line))
             history_questions.append(question)
             last_is_answer = False
+
+
+def to_literal(x):
+    """Convert items in x to literal string.
+
+    :param x: list[unicode | bool | float | int]
+    :return: list[unicode]
+    :raise RuntimeError:
+    """
+    result = []
+    for i in x:
+        if isinstance(i, unicode):
+            result.append(i)
+        elif isinstance(i, bool):
+            result.append(u'1' if i else u'0')
+        elif isinstance(i, int):
+            result.append(unicode(i))
+        elif isinstance(i, float):
+            result.append('{:.3f}'.format(i))
+        else:
+            raise RuntimeError(u'cannot handle {}'.format(i))
+    return result
 
 
 def adjust_len(path, output):
@@ -412,7 +442,7 @@ def main(argv):
             return
         elif opt in ('-g', '--generate'):
             data_set_generator = DatasetGenerator()
-            data_set_generator.generate()
+            data_set_generator.generate(0)
         elif opt in ('-t', '--test'):
             method.configure(method_config)
             method_ = method.get_method(arg)
