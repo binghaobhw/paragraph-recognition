@@ -5,38 +5,38 @@ from unittest import TestCase
 from mock import Mock
 from method import FanYang, AnalyzedSentence, configure, get_method
 
-
-class TestFanYang(TestCase):
-    method_config = {
-        'essentials': {
-            'third_person_pronoun': 'data/third-person-pronoun.txt',
-            'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
-            'cue_word': 'data/cue-word.txt',
-            'stop_word': 'data/stop-word.txt'
-        },
-        'word_similarity_calculators': {
-            'how_net': {
-                'class': 'HowNetCalculator',
-                'sememe_tree_file': 'data/whole.dat',
-                'glossary_file': 'data/glossary.dat'
-            }
-        },
-        'sentence_similarity_calculator': {
-            'ssc_with_how_net': {
-                'word_similarity_calculator': 'how_net',
-                'cache_filename': 'data/sentence-score.cache'
-            }
-        },
-        'method': {
-            'fan_yang': {
-                'class': 'FanYang',
-                'sentence_similarity_calculator': 'ssc_with_how_net',
-                'train_data_filename': 'data/train-set.txt',
-                'classifier_filename': 'data/fan-yang.classifier'
-            }
+method_config = {
+    'essentials': {
+        'third_person_pronoun': 'data/third-person-pronoun.txt',
+        'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
+        'cue_word': 'data/cue-word.txt',
+        'stop_word': 'data/stop-word.txt'
+    },
+    'word_similarity_calculators': {
+        'how_net': {
+            'class': 'HowNetCalculator',
+            'sememe_tree_file': 'data/whole.dat',
+            'glossary_file': 'data/glossary.dat'
+        }
+    },
+    'sentence_similarity_calculator': {
+        'ssc_with_how_net': {
+            'word_similarity_calculator': 'how_net',
+            'score_filename': 'data/how-net-sentence.score'
+        }
+    },
+    'method': {
+        'fan_yang': {
+            'class': 'FanYang',
+            'sentence_similarity_calculator': 'ssc_with_how_net',
+            'train_data_filename': 'data/train-set.txt',
+            'classifier_filename': 'data/fan-yang.classifier'
         }
     }
+}
 
+
+class TestFanYang(TestCase):
     def test_train(self):
         mock_fan_yang = Mock(FanYang)
         mock_fan_yang.train_data_filename = 'data/train-set.txt'
@@ -45,6 +45,9 @@ class TestFanYang(TestCase):
         mock_fan_yang.train = FanYang.train.__get__(mock_fan_yang)
         mock_fan_yang.train()
         self.assertIsNotNone(mock_fan_yang.classifier)
+
+    def test_features(self):
+        pass
 
     def test_is_follow_up(self):
         configure(self.method_config)
@@ -70,3 +73,6 @@ class TestFanYang(TestCase):
         mock_fan_yang.load_classifier = FanYang.load_classifier.__get__(mock_fan_yang)
         FanYang.load_classifier(mock_fan_yang)
         self.assertIsNotNone(mock_fan_yang.classifier)
+
+
+

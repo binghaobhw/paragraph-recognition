@@ -99,9 +99,15 @@ def get_analyzed_result(question_text):
     return analyzed_result
 
 
-def test(method_, file_name='data/predicted-result.txt'):
-    with codecs.open('data/test-set.txt', encoding='utf-8') as test_set, \
-            codecs.open(file_name, encoding='utf-8', mode='wb') as result_file:
+def test(method_, test_set_filename, result_filename):
+    """Use method_ to judge questions in test_set_filename.
+
+    :param method_: subclass of AbstractMethod
+    :param test_set_filename: str
+    :param result_filename: str
+    """
+    with codecs.open(test_set_filename, encoding='utf-8') as test_set, \
+            codecs.open(result_filename, encoding='utf-8', mode='wb') as result_file:
         logger.info('start to test all')
         history_questions = []
         previous_answer_text = None
@@ -119,46 +125,60 @@ def test(method_, file_name='data/predicted-result.txt'):
             previous_answer = get_analyzed_result(previous_answer_text) \
                 if last_is_answer else None
             last_is_answer = False
-            result = 'F'
             logger.info('start to test %s', prefix)
-            if not method_.is_follow_up(question, history_questions,
-                                        previous_answer):
-                result = 'N'
+            follow_up = method_.is_follow_up(question, history_questions,
+                                             previous_answer)
+            logger.info('finished testing %s, follow_up=%s', prefix, follow_up)
+            if not follow_up:
                 history_questions = []
-            logger.info('finished testing %s', prefix)
-            result_file.write('{}:{}\n'.format(prefix, result))
+            result_file.write('{}:{:d}\n'.format(prefix, follow_up))
             history_questions.append(question)
         logger.info('finished testing all')
 
 
-def evaluation(file_name):
-    answer_file_name = 'data/actual-result.txt'
-    with codecs.open(answer_file_name, encoding='utf-8') as actual, \
-            codecs.open(file_name, encoding='utf-8') as predicted:
-        result = {'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
-                  'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
-                  'A': {'T': 0, 'F': 0, 'P': 0.0}}
-        new = result['N']
-        follow = result['F']
-        all = result['A']
-        for predicted_line in predicted:
-            predicted_line = predicted_line.strip()
-            actual_line = actual.next()
-            actual_line = actual_line.strip()
-            result[predicted_line[-1]][actual_line[-1]] += 1
-        new['P'] = ratio(new['N'], new['F'])
-        new['R'] = ratio(new['N'], follow['N'])
+def evaluation(result_filename, label_filename):
+    """Evaluate the test result.
+
+    :param result_filename: str
+    :param label_filename: str
+    :return: dict
+    """
+    with codecs.open(label_filename, encoding='utf-8') as label_file, \
+            codecs.open(result_filename, encoding='utf-8') as result_file:
+        outcome = {
+            'new': {'new': 0, 'follow': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'follow': {'new': 0, 'follow': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'all': {'true': 0, 'false': 0, 'P': 0.0}}
+        num_meaning = {'1': 'new', '0': 'follow'}
+        new = outcome['new']
+        follow = outcome['follow']
+        all_ = outcome['all']
+        for result_line in result_file:
+            result_line = result_line.strip()
+            label_line = label_file.next()
+            label_line = label_line.strip()
+            result_key = num_meaning[result_line[-1]]
+            label_key = num_meaning[label_line[-1]]
+            outcome[result_key][label_key] += 1
+        new['P'] = ratio(new['new'], new['follow'])
+        new['R'] = ratio(new['new'], follow['new'])
         new['F1'] = 2*new['R']*ratio(new['P'], new['R'])
-        follow['P'] = ratio(follow['F'], follow['N'])
-        follow['R'] = ratio(follow['F'], new['F'])
+        follow['P'] = ratio(follow['follow'], follow['new'])
+        follow['R'] = ratio(follow['follow'], new['follow'])
         follow['F1'] = 2*follow['R']*ratio(follow['P'], follow['R'])
-        all['T'] = new['N'] + follow['F']
-        all['F'] = new['F'] + follow['N']
-        all['P'] = ratio(all['T'], all['F'])
-    return result
+        all_['true'] = new['new'] + follow['follow']
+        all_['false'] = new['follow'] + follow['new']
+        all_['P'] = ratio(all_['true'], all_['false'])
+    return outcome
 
 
 def ratio(a, b):
+    """Return a/(a+b)
+
+    :param a: int | float
+    :param b: int | float
+    :return: float
+    """
     total = a+b
     result = 0.0
     if total != 0:
@@ -215,8 +235,8 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
         if os.path.isfile(file_name):
             logger.info('%s exists', file_name)
         else:
-            test(method_, file_name=file_name)
-        evaluation_result = evaluation(file_name=file_name)
+            test(method_, result_filename=file_name)
+        evaluation_result = evaluation(result_filename=file_name)
         result.append({'threshold': threshold, 'result': evaluation_result})
     with codecs.open(output_name, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
@@ -255,7 +275,7 @@ class DatasetGenerator(object):
         return paragraph_lines, label_lines
 
     def generate(self, num):
-        """generate dataset and answer.
+        """generate dataset and label.
 
         dataset format:
             Q1:question1
@@ -265,7 +285,7 @@ class DatasetGenerator(object):
             Q3:question3
             A2:answer2
 
-        answer format: 0: new 1: follow-up
+        label format: 0: new 1: follow-up
             Q1:0
             Q2:1
             Q3:0
@@ -274,8 +294,9 @@ class DatasetGenerator(object):
         """
         previous_category_id = None
         with codecs.open(self.dataset_filename, encoding='utf-8', mode='wb') \
-                as dataset_file, codecs.open(self.label_filename, encoding='utf-8',
-                                        mode='wb') as label_file:
+                as dataset_file, codecs.open(self.label_filename,
+                                             encoding='utf-8', mode='wb') as \
+                label_file:
             logger.info('start to generate dataset, limit %s', num)
             for paragraph in Session.query(Paragraph).filter(
                     Paragraph.is_deleted == 0).order_by(
@@ -384,11 +405,52 @@ def adjust_len(path, output):
                      for f in file_list])
     result = []
     for len in sorted(len_dict.keys()):
-        evaluation_result = evaluation(file_name=len_dict[len])
+        evaluation_result = evaluation(result_filename=len_dict[len])
         result.append({'threshold': len, 'result': evaluation_result})
     with codecs.open(output, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
 
+
+method_config = {
+    'essentials': {
+        'third_person_pronoun': 'data/third-person-pronoun.txt',
+        'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
+        'cue_word': 'data/cue-word.txt',
+        'stop_word': 'data/stop-word.txt'
+    },
+    'word_similarity_calculators': {
+        'how_net': {
+            'class': 'HowNetCalculator',
+            'sememe_tree_file': 'data/whole.dat',
+            'glossary_file': 'data/glossary.dat'
+        }
+    },
+    'sentence_similarity_calculator': {
+        'ssc_with_how_net': {
+            'word_similarity_calculator': 'how_net',
+            'score_filename': 'data/how-net-sentence.score'
+        }
+    },
+    'method': {
+        'fan_yang': {
+            'class': 'FanYang',
+            'sentence_similarity_calculator': 'ssc_with_how_net',
+            'train_data_filename': 'data/train-set.txt',
+            'classifier_filename': 'data/fan-yang.classifier'
+        },
+        'de_boni': {
+            'class': 'DeBoni',
+            'sentence_similarity_calculator': 'ssc_with_how_net',
+            'q_q_threshold': 0.89,
+            'q_a_threshold': 0.89
+        }
+    }
+}
+
+
+def prepare():
+    logging.config.dictConfig(LOGGING)
+    method.configure(method_config)
 
 def show_usage():
     pass

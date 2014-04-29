@@ -132,35 +132,35 @@ class AnalyzedSentence(object):
 
 
 class SentenceSimilarityCalculator(object):
-    score_cache = {}
+    scores = {}
 
-    def __init__(self, word_similarity_calculator, cache_filename=None):
+    def __init__(self, word_similarity_calculator, score_filename=None):
         self.word_similarity_calculator = word_similarity_calculator
-        self.cache_filename = cache_filename
-        self.cache = True if self.cache_filename else False
-        if self.cache and os.path.isfile(self.cache_filename):
-            with open(self.cache_filename, 'rb') as f:
-                logger.info('start to load %s', self.cache_filename)
-                self.score_cache = cPickle.load(f)
-                logger.info('finished loading score cache')
+        self.score_filename = score_filename
+        self.cache = True if self.score_filename else False
+        if self.cache and os.path.isfile(self.score_filename):
+            with open(self.score_filename, 'rb') as f:
+                logger.info('start to load %s', self.score_filename)
+                self.scores = cPickle.load(f)
+                logger.info('finished loading sentence score')
 
     def __del__(self):
-        if self.score_cache and self.cache:
-            with open(self.cache_filename, 'wb') as f:
-                logger.info('start to save score cache')
-                cPickle.dump(self.score_cache, f, cPickle.HIGHEST_PROTOCOL)
-                logger.info('finished saving score cache')
+        if self.scores and self.cache:
+            with open(self.score_filename, 'wb') as f:
+                logger.info('start to save score to %s', self.score_filename)
+                cPickle.dump(self.scores, f, cPickle.HIGHEST_PROTOCOL)
+                logger.info('finished saving score')
 
     def calculate(self, text_a, text_b):
         if self.cache:
             key = (text_a.md5, text_b.md5)
-            if key in self.score_cache:
-                score = self.score_cache[key]
+            if key in self.scores:
+                score = self.scores[key]
                 logger.debug('sentence score from cache: %s', score)
                 return score
         score = self.do_calculate(text_a, text_b)
         if self.cache:
-            self.score_cache[key] = score
+            self.scores[key] = score
             logger.debug('add sentence score into cache: %s', score)
         return score
 
@@ -537,10 +537,11 @@ class AbstractMethod(object):
 
 class DeBoni(AbstractMethod):
 
-    def __init__(self, sentence_similarity_calculator):
+    def __init__(self, sentence_similarity_calculator, q_q_threshold,
+                 q_a_threshold):
         super(DeBoni, self).__init__(sentence_similarity_calculator)
-        self.q_q_threshold = 0.89
-        self.q_a_threshold = 0.89
+        self.q_q_threshold = q_q_threshold
+        self.q_a_threshold = q_a_threshold
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
@@ -587,11 +588,11 @@ class FanYang(AbstractMethod):
         if self.classifier_filename and \
                 os.path.isfile(self.classifier_filename):
             self.load_classifier()
-        else:
+        elif os.path.isfile(self.train_data_filename):
             self.train()
 
     def __del__(self):
-        if self.classifier_filename:
+        if self.classifier and self.classifier_filename:
             self.save_classifier()
 
     def load_classifier(self):
