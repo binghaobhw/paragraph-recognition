@@ -206,6 +206,7 @@ class HowNetCalculator(WordSimilarityCalculator):
 
     def load_glossary(self, glossary_file):
         white_space = re.compile(ur'\s+')
+        logger.info('start to load %s', glossary_file)
         with codecs.open(glossary_file, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
@@ -215,6 +216,7 @@ class HowNetCalculator(WordSimilarityCalculator):
                     self.glossary[key].append(word_description)
                 else:
                     self.glossary[key] = [word_description]
+        logger.info('finished loading glossary(size=%s)', len(self.glossary))
 
     def calculate(self, word_a, word_b):
         """Return the similarity of two words.
@@ -232,6 +234,7 @@ class HowNetCalculator(WordSimilarityCalculator):
                     score = self.calculate_concept_similarity(concept_a, concept_b)
                     if max_score < score:
                         max_score = score
+        logger.debug('[%s, %s] score: %s', word_a, word_b, max_score)
         return max_score
 
     def calculate_concept_similarity(self, concept_a, concept_b):
@@ -260,6 +263,8 @@ class HowNetCalculator(WordSimilarityCalculator):
             product.append(product[2] * sim[3])
             score = reduce(lambda x, y: x+y, map(lambda (x, y): x*y,
                                                  zip(product, self.beta)))
+        logger.debug('[%s, %s] score: %s', concept_a.word, concept_b.word,
+                     score)
         return score
 
     def first_independent_sememe_similarity(self, sememe_a, sememe_b):
@@ -269,7 +274,9 @@ class HowNetCalculator(WordSimilarityCalculator):
         :param sememe_b: unicode
         :return: float
         """
-        return self.sememe_similarity(sememe_a, sememe_b)
+        score = self.sememe_similarity(sememe_a, sememe_b)
+        logger.debug('[%s, %s] score: %s', sememe_a, sememe_b, score)
+        return score
 
     def other_independent_sememe_similarity(self, list_a, list_b):
         """Return the other-independent-sememe similarity of two concepts.
@@ -280,6 +287,7 @@ class HowNetCalculator(WordSimilarityCalculator):
         """
         score = 0.0
         if not list_a or not list_b:
+            logger.debug('one or two of params is None, score: 0.0')
             return score
         sememe_score = {}
         pop_sememes = {}
@@ -289,20 +297,22 @@ class HowNetCalculator(WordSimilarityCalculator):
                 score = self.sememe_similarity(sememe_a, sememe_b)
                 sememe_score[(sememe_a, sememe_b)] = score
         while len(sememe_score) > 0:
-            max_score = 0.0
+            max_score = -1.0
             key = None
-            for (sememe_a, sememe_b), score in sememe_score.items():
-                if sememe_a in pop_sememes or sememe_b in pop_sememes:
-                    sememe_score.pop((sememe_a, sememe_b))
+            for sememe_tuple, score in sememe_score.items():
+                if sememe_tuple[0] in pop_sememes or \
+                        sememe_tuple[1] in pop_sememes:
+                    sememe_score.pop(sememe_tuple)
                     continue
                 if max_score < score:
                     max_score = score
-                    key = (sememe_a, sememe_b)
+                    key = sememe_tuple
             if key is not None:
-                pop_sememes[key[0]] = None
-                pop_sememes[key[1]] = None
+                pop_sememes[key[0]] = 1
+                pop_sememes[key[1]] = 1
             scores.append(max_score)
         score = sum(scores) / len(scores)
+        logger.debug('[%s, %s] score: %s', list_a, list_b, score)
         return score
 
     def key_value_similarity(self, map_a, map_b):
@@ -330,7 +340,9 @@ class HowNetCalculator(WordSimilarityCalculator):
         :param map_b: dict(unicode, unicode)
         :return: float
         """
-        return self.key_value_similarity(map_a, map_b)
+        score = self.key_value_similarity(map_a, map_b)
+        logger.debug('[%s, %s] score: %s', map_a, map_b, score)
+        return score
 
     def symbol_sememe_similarity(self, map_a, map_b):
         """Return the symbol-sememe similarity of two concepts.
@@ -339,7 +351,9 @@ class HowNetCalculator(WordSimilarityCalculator):
         :param map_b: dict(unicode, unicode)
         :return: float
         """
-        return self.key_value_similarity(map_a, map_b)
+        score = self.key_value_similarity(map_a, map_b)
+        logger.debug('[%s, %s] score: %s', map_a, map_b, score)
+        return score
 
     def sememe_similarity(self, sememe_a, sememe_b):
         """Return the similarity of two sememes.
@@ -350,14 +364,15 @@ class HowNetCalculator(WordSimilarityCalculator):
         """
         is_a_specific_word = is_specific_word(sememe_a)
         is_b_specific_word = is_specific_word(sememe_b)
-        # 两个都是具体词
+        # both are specific words
         if is_a_specific_word and is_b_specific_word:
             return 1.0 if sememe_a == sememe_b else 0.0
-        # 有一个是具体词
+        # one is specific word
         if is_a_specific_word or is_b_specific_word:
             return self.gamma
         distance = self.sememe_distance(sememe_a, sememe_b)
         score = self.alpha / (self.alpha+distance) if distance >= 0 else 0.0
+        logger.debug('[%s, %s] score: %s', sememe_a, sememe_b, score)
         return score
 
     def sememe_distance(self, sememe_a, sememe_b):
@@ -367,18 +382,20 @@ class HowNetCalculator(WordSimilarityCalculator):
         :param sememe_b: unicode
         :return: int
         """
-        if sememe_a not in self.sememe_tree or sememe_b not in self.sememe_tree:
+        if sememe_a not in self.sememe_tree or \
+                sememe_b not in self.sememe_tree:
             return -1
         sememe_a = self.sememe_tree[sememe_a]
         sememe_b = self.sememe_tree[sememe_b]
         path_a = self.sememe_tree.path(sememe_a)
         id_b = sememe_b.id_
         father_id_b = sememe_b.father
-        distance_b = 0  # b到首个公共节点的距离
+        distance_b = 0  # distance between b and nearest common node
         while id_b != father_id_b:
             if id_b in path_a:
-                distance_a = path_a.index(id_b)  # a到首个公共节点的距离
-                return distance_a + distance_b  # a到b的最短路径
+                # distance between a and nearest common node
+                distance_a = path_a.index(id_b)
+                return distance_a + distance_b  # shortest distance a <-> b
             father_b = self.sememe_tree[father_id_b]
             id_b = father_b.id_
             father_id_b = father_b.father
@@ -460,6 +477,7 @@ class SememeTreeBuilder(object):
         self.file_name = file_name
 
     def build(self):
+        logger.info('start to load %s', self.file_name)
         with codecs.open(self.file_name, encoding='utf-8') as f:
             sememe_list = []
             sememe_tree = {}
@@ -473,6 +491,7 @@ class SememeTreeBuilder(object):
                 if content in sememe_tree:
                     continue
                 sememe_tree[content] = sememe
+        logger.info('finished loading sememe tree(size=%s)', len(sememe_list))
         return SememeTree(sememe_list, sememe_tree)
 
 
@@ -585,11 +604,6 @@ class FanYang(AbstractMethod):
             for feature_name in self.feature_names:
                 if feature_name not in feature_names:
                     self.feature_names.remove(feature_name)
-        if self.classifier_filename and \
-                os.path.isfile(self.classifier_filename):
-            self.load_classifier()
-        elif os.path.isfile(self.train_data_filename):
-            self.train()
 
     def __del__(self):
         if self.classifier and self.classifier_filename:
@@ -603,13 +617,15 @@ class FanYang(AbstractMethod):
 
     def save_classifier(self):
         with open(self.classifier_filename, 'wb') as f:
-            logger.info('start to save classifier')
+            logger.info('start to save classifier to %s',
+                        self.classifier_filename)
             cPickle.dump(self.classifier, f, cPickle.HIGHEST_PROTOCOL)
             logger.info('finished save classifier')
 
     def train(self):
         features = []
         labels = []
+        logger.info('start to train %s', self.train_data_filename)
         with codecs.open(self.train_data_filename, encoding='utf-8') as f:
             f.next()
             for line in f:
@@ -619,11 +635,20 @@ class FanYang(AbstractMethod):
                 features.append(fields[:-1])
                 labels.append(fields[-1])
         self.classifier = tree.DecisionTreeClassifier().fit(features, labels)
+        logger.info('finished training')
 
     def is_follow_up(self, question, history_questions, previous_answer):
         features = self.features(question, history_questions, previous_answer)
+        if not self.classifier:
+            if self.classifier_filename and os.path.isfile(
+                    self.classifier_filename):
+                self.load_classifier()
+            elif os.path.isfile(self.train_data_filename):
+                self.train()
         predictions = self.classifier.predict([features])
-        return bool(predictions[0])
+        follow_up = bool(predictions[0])
+        logger.debug('question: %s, follow_up: %s', question.md5, follow_up)
+        return follow_up
 
     def features(self, question, history_questions, previous_answer):
         """Return features of question.
@@ -634,6 +659,7 @@ class FanYang(AbstractMethod):
         :return: list[bool | float]
         """
         features = []
+        logger.info('start, question: %s', question.md5)
         if u'pronoun' in self.feature_names:
             features.append(question.has_pronoun())
         if u'proper_noun' in self.feature_names:
@@ -645,6 +671,7 @@ class FanYang(AbstractMethod):
         if u'max_sentence_similarity' in self.feature_names:
             features.append(self.max_sentence_similarity(
                 question, history_questions))
+        logger.info('finished, features: %s', features)
         return features
 
 
@@ -740,7 +767,7 @@ def configure(dict_config):
             'sentence_similarity_calculator': {
                 'ssc_with_how_net': {
                     'word_similarity_calculator': 'how_net',
-                    'cache_filename': 'data/sentence-score.cache'
+                    'score_filename': 'data/sentence-score.cache'
                 }
             },
             'method': {

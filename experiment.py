@@ -128,7 +128,8 @@ def test(method_, test_set_filename, result_filename):
             logger.info('start to test %s', prefix)
             follow_up = method_.is_follow_up(question, history_questions,
                                              previous_answer)
-            logger.info('finished testing %s, follow_up=%s', prefix, follow_up)
+            logger.info('finished testing %s, follow_up: %s', prefix,
+                        follow_up)
             if not follow_up:
                 history_questions = []
             result_file.write('{}:{:d}\n'.format(prefix, follow_up))
@@ -450,7 +451,7 @@ method_config = {
 
 def prepare():
     logging.config.dictConfig(LOGGING)
-    method.configure(method_config)
+
 
 def show_usage():
     pass
@@ -521,4 +522,7 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    method.configure(method_config)
+    fan_yang = method.get_method('fan_yang')
+    train_data(fan_yang, 'data/train-set-data.txt', 'data/train-set-label.txt',
+               'data/train-data.txt')
