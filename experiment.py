@@ -137,7 +137,7 @@ def test(method_, test_set_filename, result_filename):
         logger.info('finished testing all')
 
 
-def evaluation(result_filename, label_filename):
+def evaluate(result_filename, label_filename):
     """Evaluate the test result.
 
     :param result_filename: str
@@ -237,7 +237,7 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
             logger.info('%s exists', file_name)
         else:
             test(method_, result_filename=file_name)
-        evaluation_result = evaluation(result_filename=file_name)
+        evaluation_result = evaluate(result_filename=file_name)
         result.append({'threshold': threshold, 'result': evaluation_result})
     with codecs.open(output_name, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
@@ -406,7 +406,7 @@ def adjust_len(path, output):
                      for f in file_list])
     result = []
     for len in sorted(len_dict.keys()):
-        evaluation_result = evaluation(result_filename=len_dict[len])
+        evaluation_result = evaluate(result_filename=len_dict[len])
         result.append({'threshold': len, 'result': evaluation_result})
     with codecs.open(output, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
@@ -511,7 +511,7 @@ def main(argv):
             method_ = method.get_method(arg)
             test(method_, 'data/q-q-0.89-q-a-0.89.txt')
         elif opt in ('-e', '--evaluation'):
-            print evaluation('data/{}'.format('q-q-1.0-q-a-1.0.txt'))
+            print evaluate('data/{}'.format('q-q-1.0-q-a-1.0.txt'))
         elif opt in ('-a', '--adjust-threshold'):
             method.configure(method_config)
             adjust_threshold('data/pid-500-len-10-pcvs')
