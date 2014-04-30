@@ -15,7 +15,7 @@ class TestFanYang(TestCase):
                     u'0,0,0,0,0.111,0\n')
         mock_fan_yang = Mock(FanYang)
         mock_fan_yang.train_data_filename = train_set_filename
-        mock_fan_yang.feature_names = FanYang.feature_names
+        mock_fan_yang.feature_names = FanYang.all_feature_names
         mock_fan_yang.classifier = None
         mock_fan_yang.train = FanYang.train.__get__(mock_fan_yang)
         mock_fan_yang.train()
@@ -24,7 +24,7 @@ class TestFanYang(TestCase):
     def test_features(self):
         mock_fan_yang = Mock(FanYang)
         mock_fan_yang.features = FanYang.features.__get__(mock_fan_yang)
-        mock_fan_yang.feature_names = FanYang.feature_names
+        mock_fan_yang.feature_names = FanYang.all_feature_names
         mock_fan_yang.max_sentence_similarity.return_value = 0.5
         question = AnalyzedSentence(u'71f0404c2c3b9590de252ee22453b127',
                                     u'[[[{"cont": "看", "parent": 2, "relate": "SBV", "ne": "O", "pos": "v", "arg": [{"end": 1, "type": "A1", "id": 0, "beg": 1}], "id": 0}, {"cont": "乳房", "parent": 0, "relate": "VOB", "ne": "O", "pos": "n", "arg": [], "id": 1}, {"cont": "是", "parent": -1, "relate": "HED", "ne": "O", "pos": "v", "arg": [{"end": 4, "type": "A1", "id": 0, "beg": 3}], "id": 2}, {"cont": "啥", "parent": 4, "relate": "ATT", "ne": "O", "pos": "r", "arg": [], "id": 3}, {"cont": "病", "parent": 2, "relate": "VOB", "ne": "O", "pos": "n", "arg": [], "id": 4}]]]')

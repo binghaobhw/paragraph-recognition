@@ -592,7 +592,7 @@ def field_to_right_type(fields):
 
 class FanYang(AbstractMethod):
     classifier = None
-    feature_names = [u'pronoun', u'proper_noun', u'noun', u'verb',
+    all_feature_names = [u'pronoun', u'proper_noun', u'noun', u'verb',
                      u'max_sentence_similarity']
 
     def __init__(self, sentence_similarity_calculator, train_data_filename,
@@ -600,10 +600,8 @@ class FanYang(AbstractMethod):
         super(FanYang, self).__init__(sentence_similarity_calculator)
         self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
-        if feature_names:
-            for feature_name in self.feature_names:
-                if feature_name not in feature_names:
-                    self.feature_names.remove(feature_name)
+        self.feature_names = feature_names if feature_names else \
+            self.all_feature_names
 
     def __del__(self):
         if self.classifier and self.classifier_filename:
@@ -622,7 +620,7 @@ class FanYang(AbstractMethod):
             cPickle.dump(self.classifier, f, cPickle.HIGHEST_PROTOCOL)
             logger.info('finished save classifier')
 
-    def train(self):
+    def train(self, max_depth=3, min_samples_leaf=5):
         features = []
         labels = []
         logger.info('start to train %s', self.train_data_filename)
@@ -630,11 +628,13 @@ class FanYang(AbstractMethod):
             f.next()
             for line in f:
                 line = line.strip()
-                fields = line.split(',', len(self.feature_names))
+                fields = line.split(',', len(self.all_feature_names))
                 fields = field_to_right_type(fields)
                 features.append(fields[:-1])
                 labels.append(fields[-1])
-        self.classifier = tree.DecisionTreeClassifier().fit(features, labels)
+        self.classifier = tree.DecisionTreeClassifier(
+            max_depth=max_depth, min_samples_leaf=min_samples_leaf).\
+            fit(features, labels)
         logger.info('finished training')
 
     def is_follow_up(self, question, history_questions, previous_answer):
@@ -660,15 +660,44 @@ class FanYang(AbstractMethod):
         """
         features = []
         logger.info('start, question: %s', question.md5)
-        if u'pronoun' in self.feature_names:
+        if self.all_feature_names[0] in self.feature_names:
             features.append(question.has_pronoun())
-        if u'proper_noun' in self.feature_names:
+        if self.all_feature_names[1] in self.feature_names:
             features.append(question.has_proper_noun())
-        if u'noun' in self.feature_names:
+        if self.all_feature_names[2] in self.feature_names:
             features.append(question.has_noun())
-        if u'verb' in self.feature_names:
+        if self.all_feature_names[3] in self.feature_names:
             features.append(question.has_verb())
-        if u'max_sentence_similarity' in self.feature_names:
+        if self.all_feature_names[4] in self.feature_names:
+            features.append(self.max_sentence_similarity(
+                question, history_questions))
+        logger.info('finished, features: %s', features)
+        return features
+
+
+class ImprovedMethod(FanYang):
+    all_feature_names = [u'pronoun', u'cue_word', u'noun', u'sbv_or_vob',
+                         u'lcs', u'same_entity', u'content_word_similarity']
+    def __init__(self, sentence_similarity_calculator, train_data_filename,
+                 feature_names=None, classifier_filename=None):
+        super(ImprovedMethod, self).__init__(sentence_similarity_calculator,
+                                             train_data_filename, feature_names,
+                                             classifier_filename)
+
+
+
+    def features(self, question, history_questions, previous_answer):
+        features = []
+        logger.info('start, question: %s', question.md5)
+        if self.all_feature_names[0] in self.feature_names:
+            features.append(question.has_pronoun())
+        if self.all_feature_names[1] in self.feature_names:
+            features.append(question.has_cue_word())
+        if self.all_feature_names[2] in self.feature_names:
+            features.append(question.has_noun())
+        if self.all_feature_names[3] in self.feature_names:
+            features.append(question.has_sbv_or_vob())
+        if self.all_feature_names[4] in self.feature_names:
             features.append(self.max_sentence_similarity(
                 question, history_questions))
         logger.info('finished, features: %s', features)
