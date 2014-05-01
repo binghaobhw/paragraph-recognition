@@ -26,6 +26,7 @@ STOP_WORD_DICT = ESSENTIALS_DICT['stop_word']
 
 word_similarity_calculators = {}
 sentence_similarity_calculators = {}
+feature_managers = {}
 methods = {}
 
 
@@ -58,61 +59,60 @@ class AnalyzedSentence(object):
         self.md5 = md5
 
     def has_noun(self):
-        result = False
-        for w in self.words_with_pos_tag('n'):
-            result = True
-            break
-        logger.info('%s', result)
-        return result
+        for w in self.words_with_tag('pos', 'n'):
+            return True
+        return False
 
     def has_proper_noun(self):
-        result = False
-        for w in self.words():
-            if w['ne'] != '0':
-                result = True
-                break
-        logger.info('%s', result)
-        return result
+        for w in self.named_entities():
+            return True
+        return False
 
     def has_pronoun(self):
         len_threshold = 10
-        result = False
         if self.word_count() < len_threshold:
             for pronoun in self.pronouns():
                 if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
                         or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
-                    result = True
-                    break
-        logger.info('%s', result)
-        return result
+                    return True
+        return False
 
     def word_count(self):
         return sum(len(s) for s in self.sentences())
 
     def has_cue_word(self):
-        result = False
         for word in self.words():
             if word['cont'] in CUE_WORD_DICT:
-                result = True
-                break
-        logger.info('%s', result)
-        return result
+                return True
+        return False
 
     def pronouns(self):
-        for r in self.words_with_pos_tag('r'):
+        for r in self.words_with_tag('pos', 'r'):
             yield r
 
     def has_verb(self):
-        result = False
-        for w in self.words_with_pos_tag('v'):
-            result = True
-            break
-        logger.info('%s', result)
-        return result
+        for w in self.words_with_tag('pos', 'v'):
+            return True
+        return False
 
-    def words_with_pos_tag(self, x):
+    def has_sbv(self):
+        for w in self.words_with_tag('relate', 'SBV'):
+            return True
+        return False
+
+    def has_vob(self):
+        for w in self.words_with_tag('relate', 'VOB'):
+            return True
+        return False
+
+    def named_entities(self):
         for w in self.words():
-            if w['pos'] == x:
+            if w['ne'] != 'O':
+                yield w
+
+    def words_with_tag(self, tag, value):
+        for w in self.words():
+            if w[tag] == value:
                 yield w
 
     def sentences(self):
@@ -151,18 +151,41 @@ class SentenceSimilarityCalculator(object):
                 cPickle.dump(self.scores, f, cPickle.HIGHEST_PROTOCOL)
                 logger.info('finished saving score')
 
-    def calculate(self, text_a, text_b):
+    def calculate(self, a, b):
+        """Return the similarity between a and b.
+
+        :param a: AnalyzedSentence
+        :param b: AnalyzedSentence
+        :return: float
+        """
         if self.cache:
-            key = (text_a.md5, text_b.md5)
+            key = (a.md5, b.md5)
             if key in self.scores:
                 score = self.scores[key]
-                logger.debug('sentence score from cache: %s', score)
+                logger.debug('score from cache: %s, key: %s', score, key)
                 return score
-        score = self.do_calculate(text_a, text_b)
+        score = self.do_calculate(a, b)
         if self.cache:
             self.scores[key] = score
-            logger.debug('add sentence score into cache: %s', score)
+            logger.debug('cache score: %s, key: %s', score, key)
         return score
+
+    def max(self, a, b):
+        """Return the largest similarity between a and each sentence of b.
+
+        :param a: AnalyzedSentence
+        :param b: list[AnalyzedSentence]
+        :return: float
+        """
+        max_sentence_score = 0.0  # sentence similarity
+        if not b:
+            return max_sentence_score
+        for sentence in b:
+            score = self.calculate(a, sentence)
+            if max_sentence_score < score:
+                max_sentence_score = score
+        logger.info('max sentence score: %s', max_sentence_score)
+        return max_sentence_score
 
     def do_calculate(self, text_a, text_b):
         score = 0.0
@@ -180,7 +203,7 @@ class SentenceSimilarityCalculator(object):
             score += max_word_score
         if text_a_len != 0:
             score /= text_a_len
-        logger.debug('sentence score: %s', score)
+        logger.debug('score: %s', score)
         return score
 
 
@@ -310,7 +333,7 @@ class HowNetCalculator(WordSimilarityCalculator):
             if key is not None:
                 pop_sememes[key[0]] = 1
                 pop_sememes[key[1]] = 1
-            scores.append(max_score)
+                scores.append(max_score)
         score = sum(scores) / len(scores)
         logger.debug('[%s, %s] score: %s', list_a, list_b, score)
         return score
@@ -527,8 +550,8 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
 
 
 class AbstractMethod(object):
-    def __init__(self, sentence_similarity_calculator):
-        self.sentence_similarity_calculator = sentence_similarity_calculator
+    def __init__(self, feature_manager):
+        self.feature_manager = feature_manager
 
     def is_follow_up(self, question, history_questions, previous_answer):
         """Predict whether the question is follow-up.
@@ -540,37 +563,25 @@ class AbstractMethod(object):
         """
         pass
 
-    def max_sentence_similarity(self, question, history_questions):
-        # sentence similarity
-        max_sentence_score = 0.0
-        if not history_questions:
-            return max_sentence_score
-        for history_question in history_questions:
-            score = self.sentence_similarity_calculator.calculate(
-                question, history_question)
-            if max_sentence_score < score:
-                max_sentence_score = score
-        logger.info('max sentence score: %s', max_sentence_score)
-        return max_sentence_score
-
 
 class DeBoni(AbstractMethod):
 
-    def __init__(self, sentence_similarity_calculator, q_q_threshold,
+    def __init__(self, feature_manager, q_q_threshold,
                  q_a_threshold):
-        super(DeBoni, self).__init__(sentence_similarity_calculator)
+        super(DeBoni, self).__init__(feature_manager)
         self.q_q_threshold = q_q_threshold
         self.q_a_threshold = q_a_threshold
 
     def is_follow_up(self, question, history_questions, previous_answer):
         follow_up = False
-        if question.has_pronoun() or \
-                question.has_cue_word() or \
-                not question.has_verb() or \
-                (history_questions and self.max_sentence_similarity(
-                    question, history_questions) > self.q_q_threshold) or \
-                (previous_answer and self.sentence_similarity_calculator.
-                    calculate(question, previous_answer) > self.q_a_threshold):
+        context = build_context(question, history_questions, previous_answer)
+        if self.feature_manager.has_pronoun(context) or \
+                self.feature_manager.has_cue_word(context) or \
+                not self.feature_manager.has_verb(context) or \
+                self.feature_manager.max_question_similarity(context) > \
+                self.q_q_threshold or \
+                self.feature_manager.qa_similarity(context) > \
+                self.q_a_threshold:
             follow_up = True
         return follow_up
 
@@ -592,16 +603,17 @@ def field_to_right_type(fields):
 
 class FanYang(AbstractMethod):
     classifier = None
-    all_feature_names = [u'pronoun', u'proper_noun', u'noun', u'verb',
-                     u'max_sentence_similarity']
+    feature_names = [
+        'pronoun',
+        'proper_noun',
+        'noun',
+        'verb',
+        'largest_question_similarity']
 
-    def __init__(self, sentence_similarity_calculator, train_data_filename,
-                 feature_names=None, classifier_filename=None):
-        super(FanYang, self).__init__(sentence_similarity_calculator)
+    def __init__(self, feature_manager, train_data_filename, classifier_filename=None):
+        super(FanYang, self).__init__(feature_manager)
         self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
-        self.feature_names = feature_names if feature_names else \
-            self.all_feature_names
 
     def __del__(self):
         if self.classifier and self.classifier_filename:
@@ -628,7 +640,7 @@ class FanYang(AbstractMethod):
             f.next()
             for line in f:
                 line = line.strip()
-                fields = line.split(',', len(self.all_feature_names))
+                fields = line.split(',', len(self.feature_names))
                 fields = field_to_right_type(fields)
                 features.append(fields[:-1])
                 labels.append(fields[-1])
@@ -651,57 +663,151 @@ class FanYang(AbstractMethod):
         return follow_up
 
     def features(self, question, history_questions, previous_answer):
-        """Return features of question.
-
-        :param question: AnalyzedSentence
-        :param history_questions: list[AnalyzedSentence]
-        :param previous_answer: AnalyzedSentence
-        :return: list[bool | float]
-        """
-        features = []
-        logger.info('start, question: %s', question.md5)
-        if self.all_feature_names[0] in self.feature_names:
-            features.append(question.has_pronoun())
-        if self.all_feature_names[1] in self.feature_names:
-            features.append(question.has_proper_noun())
-        if self.all_feature_names[2] in self.feature_names:
-            features.append(question.has_noun())
-        if self.all_feature_names[3] in self.feature_names:
-            features.append(question.has_verb())
-        if self.all_feature_names[4] in self.feature_names:
-            features.append(self.max_sentence_similarity(
-                question, history_questions))
-        logger.info('finished, features: %s', features)
-        return features
+        return self.feature_manager.features(
+            question, history_questions, previous_answer, self.feature_names)
 
 
 class ImprovedMethod(FanYang):
-    all_feature_names = [u'pronoun', u'cue_word', u'noun', u'sbv_or_vob',
-                         u'lcs', u'same_entity', u'content_word_similarity']
-    def __init__(self, sentence_similarity_calculator, train_data_filename,
-                 feature_names=None, classifier_filename=None):
-        super(ImprovedMethod, self).__init__(sentence_similarity_calculator,
-                                             train_data_filename, feature_names,
-                                             classifier_filename)
+    feature_names = [
+        'pronoun',
+        'cue_word',
+        'noun',
+        'sbv_or_vob',
+        'same_named_entity',
+        'max_question_similarity']
 
 
+def build_context(question, history_questions, previous_answer):
+    """Return a question context including question, history and answer.
 
-    def features(self, question, history_questions, previous_answer):
+    :param question: AnalyzedSentence
+    :param history_questions: list[AnalyzedSentence]
+    :param previous_answer: AnalyzedSentence
+    :return: dict
+    """
+    context = {'question': question,
+               'history_questions': history_questions,
+               'previous_answer': previous_answer}
+    return context
+
+
+class FeatureManager(object):
+    def __init__(self, sentence_similarity_calculator):
+        super(FeatureManager, self).__init__()
+        self.sentence_similarity_calculator = sentence_similarity_calculator
+        self.feature_name_method_map = {
+            'pronoun': self.has_pronoun,
+            'cue_word': self.has_cue_word,
+            'proper_noun': self.has_proper_noun,
+            'noun': self.has_noun,
+            'verb': self.has_verb,
+            'sbv_or_vob': self.has_sbv_or_vob,
+            'same_named_entity': self.has_same_named_entity,
+            'largest_similarity': self.largest_similarity,
+            'qa_similarity': self.qa_similarity,
+            'largest_question_similarity': self.largest_question_similarity}
+
+    def features(self, question, history_questiosn, previous_answer,
+                 feature_names):
+        """Return named features of question.
+
+        :param question: AnalyzedSentence
+        :param history_questiosn: list[AnalyzedSentence]
+        :param previous_answer: AnalyzedSentence
+        :param feature_names: list[unicode]
+        :return: list[bool | float]
+        """
         features = []
-        logger.info('start, question: %s', question.md5)
-        if self.all_feature_names[0] in self.feature_names:
-            features.append(question.has_pronoun())
-        if self.all_feature_names[1] in self.feature_names:
-            features.append(question.has_cue_word())
-        if self.all_feature_names[2] in self.feature_names:
-            features.append(question.has_noun())
-        if self.all_feature_names[3] in self.feature_names:
-            features.append(question.has_sbv_or_vob())
-        if self.all_feature_names[4] in self.feature_names:
-            features.append(self.max_sentence_similarity(
-                question, history_questions))
-        logger.info('finished, features: %s', features)
+        context = build_context(question, history_questiosn, previous_answer)
+        for feature_name in feature_names:
+            feature_method = self.feature_name_method_map[feature_name]
+            feature = feature_method(context)
+            features.append(feature)
         return features
+
+    @staticmethod
+    def has_pronoun(context):
+        return context['question'].has_pronoun()
+
+    @staticmethod
+    def has_cue_word(context):
+        return context['question'].has_cue_word()
+
+    @staticmethod
+    def has_proper_noun(context):
+        return context['question'].has_proper_noun()
+
+    @staticmethod
+    def has_noun(context):
+        return context['question'].has_noun()
+
+    @staticmethod
+    def has_verb(context):
+        return context['question'].has_verb()
+
+    @staticmethod
+    def has_same_named_entity(context):
+        """Determine whether question and its context share same named entity.
+
+        :param context: dict
+        :return: bool
+        """
+        entities = {}
+        for w in context['question'].named_entities():
+            entities[w['cont']] = 1
+        for history_question in context['history_questions']:
+            for w in history_question.named_entities():
+                if w['cont'] in entities:
+                    return True
+        for w in context['previous_answer'].named_entities():
+            if w['cont'] in entities:
+                return True
+        return False
+
+    @staticmethod
+    def has_sbv_or_vob(context):
+        """Determine whether question has subject-verb structure.
+
+        :param context: dict
+        :return: bool
+        """
+        result = context['question'].has_sbv() or context['question'].has_vob()
+        return result
+
+    def largest_question_similarity(self, context):
+        """Return largest similarity between question and history questions.
+
+        :param context: dict
+        :return: float
+        """
+        question = context['question']
+        history_questions = context['history_questions']
+        return self.sentence_similarity_calculator.max(question,
+                                                       history_questions)
+
+    def qa_similarity(self, context):
+        """Return similarity between question and previous answer.
+
+        :param context: dict
+        :return: float
+        """
+        question = context['question']
+        previous_answer = context['previous_answer']
+        return self.sentence_similarity_calculator.calculate(question,
+                                                             previous_answer)
+
+    def largest_similarity(self, context):
+        """Return max similarity between question and context.
+
+        :param context: dict
+        :return: float
+        """
+        question = context['question']
+        history_questions = context['history_questions']
+        previous_answer = context['previous_answer']
+        sentences = [i for i in history_questions]
+        sentences.append(previous_answer)
+        return self.sentence_similarity_calculator.max(question, sentences)
 
 
 def get_method(name):
@@ -721,6 +827,7 @@ class Configurator(object):
         self.configure_essentials()
         self.configure_word_similarity_calculator()
         self.configure_sentence_similarity_calculator()
+        self.configure_feature_manager()
         self.configure_method()
 
     def configure_essentials(self):
@@ -750,16 +857,23 @@ class Configurator(object):
                     word_similarity_calculators[word_calculator_name],
                     **kwargs)
 
+    def configure_feature_manager(self):
+        config = self.dict_config['feature_manager']
+        for name, kwargs in config.items():
+            sentence_calculator_name = kwargs.pop(
+                'sentence_similarity_calculator')
+            feature_managers[name] = FeatureManager(
+                sentence_similarity_calculators[sentence_calculator_name])
+
     def configure_method(self):
         config = self.dict_config['method']
         for name, kwargs in config.items():
             class_name = kwargs.pop('class')
             class_ = resolve(class_name)
-            sentence_calculator_name = kwargs.pop(
-                'sentence_similarity_calculator')
-            methods[name] = class_(
-                sentence_similarity_calculators[sentence_calculator_name],
-                **kwargs)
+            feature_manager_name = kwargs.pop(
+                'feature_manager')
+            methods[name] = class_(feature_managers[feature_manager_name],
+                                   **kwargs)
 
 
 def resolve(class_name):
