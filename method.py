@@ -138,11 +138,6 @@ class SentenceSimilarityCalculator(object):
         self.word_similarity_calculator = word_similarity_calculator
         self.score_filename = score_filename
         self.cache = True if self.score_filename else False
-        if self.cache and os.path.isfile(self.score_filename):
-            with open(self.score_filename, 'rb') as f:
-                logger.info('start to load %s', self.score_filename)
-                self.scores = cPickle.load(f)
-                logger.info('finished loading sentence score')
 
     def __del__(self):
         if self.scores and self.cache:
@@ -158,12 +153,22 @@ class SentenceSimilarityCalculator(object):
         :param b: AnalyzedSentence
         :return: float
         """
+        if not isinstance(a, AnalyzedSentence):
+            raise TypeError('type of a: {}'.format(a.__class__))
+        if not isinstance(b, AnalyzedSentence):
+            raise TypeError('type of b: {}'.format(b.__class__))
         if self.cache:
             key = (a.md5, b.md5)
-            if key in self.scores:
-                score = self.scores[key]
-                logger.debug('score from cache: %s, key: %s', score, key)
-                return score
+            if self.scores:
+                if key in self.scores:
+                    score = self.scores[key]
+                    logger.debug('score from cache: %s, key: %s', score, key)
+                    return score
+            elif os.path.isfile(self.score_filename):
+                with open(self.score_filename, 'rb') as f:
+                    logger.info('start to load %s', self.score_filename)
+                    self.scores = cPickle.load(f)
+                    logger.info('finished loading sentence score')
         score = self.do_calculate(a, b)
         if self.cache:
             self.scores[key] = score
@@ -216,6 +221,7 @@ class WordSimilarityCalculator(object):
 
 
 class HowNetCalculator(WordSimilarityCalculator):
+    sememe_tree = None
     glossary = {}
     alpha = 1.6
     beta = [0.5, 0.2, 0.17, 0.13]
@@ -224,8 +230,8 @@ class HowNetCalculator(WordSimilarityCalculator):
 
     def __init__(self, sememe_tree_file, glossary_file):
         super(HowNetCalculator, self).__init__()
-        self.sememe_tree = SememeTreeBuilder(sememe_tree_file).build()
-        self.load_glossary(glossary_file)
+        self.sememe_tree_file = sememe_tree_file
+        self.glossary_file = glossary_file
 
     def load_glossary(self, glossary_file):
         white_space = re.compile(ur'\s+')
@@ -249,6 +255,10 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         max_score = 0.0
+        if not self.glossary:
+            self.load_glossary(self.glossary_file)
+        if not self.sememe_tree:
+            self.sememe_tree = SememeTreeBuilder(self.sememe_tree_file).build()
         if word_a in self.glossary and word_b in self.glossary:
             concepts_a = self.glossary[word_a]
             concepts_b = self.glossary[word_b]
@@ -430,6 +440,7 @@ class HowNetCalculator(WordSimilarityCalculator):
 
 class WordConcept(object):
     def __init__(self, word, concept):
+        self.first_independent_sememe = u''
         self.other_independent_sememe = []
         self.relation_sememe = {}
         self.symbol_sememe = {}
@@ -524,7 +535,6 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
     def __init__(self, vector_file_name):
         super(WordEmbeddingCalculator, self).__init__()
         self.vector_file_name = vector_file_name
-        self.build_word_embedding_vectors()
 
     def build_word_embedding_vectors(self):
         with codecs.open(self.vector_file_name, encoding='utf-8') as f:
@@ -540,6 +550,8 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
 
     def calculate(self, word_a, word_b):
         score = 0.0
+        if not self.word_embedding_vectors:
+            self.build_word_embedding_vectors()
         if word_a in self.word_embedding_vectors \
                 and word_b in self.word_embedding_vectors:
             raw_score = vector_cos(self.word_embedding_vectors[word_a],
@@ -578,7 +590,7 @@ class DeBoni(AbstractMethod):
         if self.feature_manager.has_pronoun(context) or \
                 self.feature_manager.has_cue_word(context) or \
                 not self.feature_manager.has_verb(context) or \
-                self.feature_manager.max_question_similarity(context) > \
+                self.feature_manager.largest_question_similarity(context) > \
                 self.q_q_threshold or \
                 self.feature_manager.qa_similarity(context) > \
                 self.q_a_threshold:
@@ -610,7 +622,8 @@ class FanYang(AbstractMethod):
         'verb',
         'largest_question_similarity']
 
-    def __init__(self, feature_manager, train_data_filename, classifier_filename=None):
+    def __init__(self, feature_manager, train_data_filename,
+                 classifier_filename=None):
         super(FanYang, self).__init__(feature_manager)
         self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
@@ -674,7 +687,7 @@ class ImprovedMethod(FanYang):
         'noun',
         'sbv_or_vob',
         'same_named_entity',
-        'max_question_similarity']
+        'largest_similarity']
 
 
 def build_context(question, history_questions, previous_answer):
@@ -753,13 +766,20 @@ class FeatureManager(object):
         :return: bool
         """
         entities = {}
-        for w in context['question'].named_entities():
+        question = context['question']
+        history_questions = context['history_questions']
+        previous_answer = context['previous_answer']
+        for w in question.named_entities():
             entities[w['cont']] = 1
-        for history_question in context['history_questions']:
+        if not history_questions:
+            return False
+        for history_question in history_questions:
             for w in history_question.named_entities():
                 if w['cont'] in entities:
                     return True
-        for w in context['previous_answer'].named_entities():
+        if not previous_answer:
+            return False
+        for w in previous_answer.named_entities():
             if w['cont'] in entities:
                 return True
         return False
@@ -771,7 +791,8 @@ class FeatureManager(object):
         :param context: dict
         :return: bool
         """
-        result = context['question'].has_sbv() or context['question'].has_vob()
+        question = context['question']
+        result = question.has_sbv() or question.has_vob()
         return result
 
     def largest_question_similarity(self, context):
@@ -805,8 +826,12 @@ class FeatureManager(object):
         question = context['question']
         history_questions = context['history_questions']
         previous_answer = context['previous_answer']
-        sentences = [i for i in history_questions]
-        sentences.append(previous_answer)
+        sentences = []
+        if history_questions:
+            for i in history_questions:
+                sentences.append(i)
+            if previous_answer:
+                sentences.append(previous_answer)
         return self.sentence_similarity_calculator.max(question, sentences)
 
 
@@ -837,7 +862,7 @@ class Configurator(object):
                 d = ESSENTIALS_DICT[k]
                 logger.info('start to load %s from %s', k, v)
                 for line in f:
-                    d[line.strip()] = None
+                    d[line.strip()] = 1
                 logger.info('finished loading %s, size=%s', k,
                             len(d))
 

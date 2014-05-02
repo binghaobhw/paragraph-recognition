@@ -432,18 +432,29 @@ method_config = {
             'score_filename': 'data/how-net-sentence.score'
         }
     },
+    'feature_manager': {
+        'fm': {
+            'sentence_similarity_calculator': 'ssc_with_how_net'
+        }
+    },
     'method': {
         'fan_yang': {
             'class': 'FanYang',
-            'sentence_similarity_calculator': 'ssc_with_how_net',
-            'train_data_filename': 'data/train-set.txt',
+            'feature_manager': 'fm',
+            'train_data_filename': 'data/fan-yang-train-set.txt',
             'classifier_filename': 'data/fan-yang.classifier'
         },
         'de_boni': {
             'class': 'DeBoni',
-            'sentence_similarity_calculator': 'ssc_with_how_net',
+            'feature_manager': 'fm',
             'q_q_threshold': 0.89,
             'q_a_threshold': 0.89
+        },
+        'my_method': {
+            'class': 'ImprovedMethod',
+            'feature_manager': 'fm',
+            'train_data_filename': 'data/my-method-train-set.txt',
+            'classifier_filename': 'data/my-method.classifier'
         }
     }
 }
