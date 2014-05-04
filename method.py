@@ -687,6 +687,8 @@ class ImprovedMethod(FanYang):
         'noun',
         'sbv_or_vob',
         'same_named_entity',
+        'word_recurrence_rate',
+        'adjacent_question_length_difference',
         'largest_similarity']
 
 
@@ -718,7 +720,10 @@ class FeatureManager(object):
             'same_named_entity': self.has_same_named_entity,
             'largest_similarity': self.largest_similarity,
             'qa_similarity': self.qa_similarity,
-            'largest_question_similarity': self.largest_question_similarity}
+            'largest_question_similarity': self.largest_question_similarity,
+            'word_recurrence_rate': self.word_recurrence_rate,
+            'adjacent_question_length_difference':
+                self.adjacent_question_length_difference}
 
     def features(self, question, history_questiosn, previous_answer,
                  feature_names):
@@ -833,6 +838,65 @@ class FeatureManager(object):
             if previous_answer:
                 sentences.append(previous_answer)
         return self.sentence_similarity_calculator.max(question, sentences)
+
+    def word_recurrence_rate(self, context):
+        """Return rate that words of context recur in current question.
+
+        :param context: dict
+        :return: float
+        """
+        question = context['question']
+        word_pool = self.build_word_pool(context)
+        if not word_pool:
+            return 0.0
+        length = 0
+        recurrence = 0
+        for w in question.words_exclude_stop():
+            length += 1
+            if w['cont'] in word_pool:
+                recurrence += 1
+                del word_pool[w['cont']]
+        if length > 0 and recurrence > 0:
+            return float(recurrence) / length
+        else:
+            return 0.0
+
+    @staticmethod
+    def adjacent_question_length_difference(context):
+        """Return length difference between previous question and current question.
+
+        :param context: dict
+        :return: float
+        """
+        question = context['question']
+        history_questions = context['history_questions']
+        if not history_questions:
+            return 0 - question.word_count()
+        adjacent_question = history_questions[-1]
+        length_difference = adjacent_question.word_count() - \
+                            question.word_count()
+        return length_difference
+
+    @staticmethod
+    def build_word_pool(context):
+        """Return a pool containing words of context.
+
+        :param context: dict
+        :return: dict
+        """
+        pool = {}
+        history_questions = context['history_questions']
+        previous_answer = context['previous_answer']
+        if history_questions:
+            for i in history_questions:
+                for w in i.words_exclude_stop():
+                    if w['cont'] not in pool:
+                        pool[w['cont']] = 0
+        if previous_answer:
+            for w in previous_answer.words_exclude_stop():
+                if w['cont'] not in pool:
+                        pool[w['cont']] = 0
+        return pool
 
 
 def get_method(name):

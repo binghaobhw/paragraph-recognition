@@ -2,7 +2,8 @@
 # coding: utf-8
 from unittest import TestCase
 from mock import Mock
-from method import build_context, FeatureManager, SentenceSimilarityCalculator
+from method import build_context, FeatureManager, SentenceSimilarityCalculator, \
+    AnalyzedSentence
 
 
 class TestFeatureManager(TestCase):
@@ -109,3 +110,27 @@ class TestFeatureManager(TestCase):
         feature_manager = FeatureManager(mock_ssc)
         result = feature_manager.largest_similarity(context)
         self.assertEqual(result, 0.111)
+
+    def test_build_word_pool(self):
+        mock_history_question = Mock(AnalyzedSentence)
+        mock_history_question.words_exclude_stop.return_value = iter(
+            [{'cont': 'hi'}, {'cont': 'all'}])
+        context = {'question': None,
+                   'history_questions': [mock_history_question],
+                   'previous_answer': None}
+        result = FeatureManager.build_word_pool(context)
+        self.assertDictEqual(result, {'hi': 0, 'all': 0})
+
+    def test_word_recurrence_rate(self):
+        mock_question = Mock(AnalyzedSentence)
+        mock_question.words_exclude_stop.return_value = iter(
+            [{'cont': 'good'}, {'cont': 'all'}])
+        context = {'question': mock_question}
+        mock_feature_manager = Mock(FeatureManager)
+        mock_feature_manager.build_word_pool.return_value = {'hi': 0, 'all': 0}
+        mock_feature_manager.word_recurrence_rate = FeatureManager.\
+            word_recurrence_rate.__get__(mock_feature_manager)
+        result = mock_feature_manager.word_recurrence_rate(context)
+        self.assertEqual(result, 0.5)
+
+

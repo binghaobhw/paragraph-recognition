@@ -275,6 +275,25 @@ class DatasetGenerator(object):
             paragraph_lines.append(test_line)
         return paragraph_lines, label_lines
 
+    def k_fold_cross(self, k, num):
+        test_data_file_pattern = '{}-fold-cross-test-data-{{}}.txt'.format(k)
+        test_label_file_pattern = '{}-fold-cross-test-label-{{}}.txt'.format(k)
+        for p in Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
+            order_by(Paragraph.paragraph_id).limit(num):
+            pass
+
+        for i in range(0, k):
+            test_data_file = test_data_file_pattern.format(i)
+            test_label_file = test_label_file_pattern.format(i)
+            with codecs.open(test_data_file, encoding='utf-8', mode='wb') as \
+                data, codecs.open(test_data_file, encoding='utf-8', mode='wb') \
+                as label:
+                pass
+
+
+
+
+
     def generate(self, num):
         """generate dataset and label.
 
