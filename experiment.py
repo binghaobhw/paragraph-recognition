@@ -275,25 +275,6 @@ class DatasetGenerator(object):
             paragraph_lines.append(test_line)
         return paragraph_lines, label_lines
 
-    def k_fold_cross(self, k, num):
-        test_data_file_pattern = '{}-fold-cross-test-data-{{}}.txt'.format(k)
-        test_label_file_pattern = '{}-fold-cross-test-label-{{}}.txt'.format(k)
-        for p in Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
-            order_by(Paragraph.paragraph_id).limit(num):
-            pass
-
-        for i in range(0, k):
-            test_data_file = test_data_file_pattern.format(i)
-            test_label_file = test_label_file_pattern.format(i)
-            with codecs.open(test_data_file, encoding='utf-8', mode='wb') as \
-                data, codecs.open(test_data_file, encoding='utf-8', mode='wb') \
-                as label:
-                pass
-
-
-
-
-
     def generate(self, num):
         """generate dataset and label.
 
@@ -361,12 +342,12 @@ class DatasetGenerator(object):
             logger.info('finished generating data set')
 
 
-def train_data(method_, dataset_file_name, label_file_name,
-               train_set_file_name):
-    with codecs.open(dataset_file_name, encoding='utf-8') as dataset_file, \
-            codecs.open(label_file_name, encoding='utf-8') as label_file, \
-            codecs.open(train_set_file_name, encoding='utf-8', mode='wb') as \
-            train_set_file:
+def generate_train_data(method_, text_filename, label_filename,
+                        train_data_filename):
+    with codecs.open(text_filename, encoding='utf-8') as text_file, \
+            codecs.open(label_filename, encoding='utf-8') as label_file, \
+            codecs.open(train_data_filename, encoding='utf-8', mode='wb') as \
+            train_data_file:
         context_window = 5
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
@@ -374,8 +355,8 @@ def train_data(method_, dataset_file_name, label_file_name,
         feature_names = method_.feature_names
         head = ','.join(feature_names)
         head = '{},label\n'.format(head)
-        train_set_file.write(head)
-        for line in dataset_file:
+        train_data_file.write(head)
+        for line in text_file:
             line = line.strip()
             if line == '':
                 continue
@@ -392,7 +373,7 @@ def train_data(method_, dataset_file_name, label_file_name,
                                         previous_answer)
             train_data_line = to_literal(features + [label])
             train_data_line = ','.join(train_data_line)
-            train_set_file.write('{}\n'.format(train_data_line))
+            train_data_file.write('{}\n'.format(train_data_line))
             history_questions.append(question)
             last_is_answer = False
 
@@ -429,6 +410,93 @@ def adjust_len(path, output):
         result.append({'threshold': len, 'result': evaluation_result})
     with codecs.open(output, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
+
+
+def k_fold_cross(k, num):
+    test_text_file_pattern = '{}-fold-cross-test-text-{{}}.txt'.format(k)
+    test_label_file_pattern = '{}-fold-cross-test-label-{{}}.txt'.format(k)
+    train_text_file_pattern = '{}-fold-cross-train-text-{{}}.txt'.format(k)
+    train_label_file_pattern = '{}-fold-cross-train-label-{{}}.txt'.format(k)
+    result_file_pattern = '{}-fold-cross-result-{{}}-{{}}.txt'.format(k)
+    train_data_file_pattern = '{}-fold-cross-train-data-{{}}-{{}}.txt'.format(k)
+    paragraphs = Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
+        order_by(Paragraph.paragraph_id).limit(num).all()
+    if len(paragraphs) != num:
+        raise RuntimeError()
+
+    folds = [[] for i in range(0, k)]
+    for i in range(0, num):
+        folds[i % k].append(paragraphs[i])
+    for i in range(0, k):
+        test_text_file = test_text_file_pattern.format(i)
+        test_label_file = test_label_file_pattern.format(i)
+        train_text_file = train_text_file_pattern.format(i)
+        train_label_file = train_label_file_pattern.format(i)
+        test_set = folds[i]
+        train_set = []
+        for j in range(0, k):
+            if j != i:
+                train_set.extend(folds[j])
+        generate_dataset(test_set, test_text_file, test_label_file)
+        generate_dataset(train_set, train_text_file, train_label_file)
+        for name, method_ in method.methods.iteritems():
+            train_data_file = train_data_file_pattern.format(name, i)
+            result_file = result_file_pattern.format(name, i)
+            generate_train_data(method_, train_text_file, train_label_file,
+                                train_data_file)
+            method_.train_data_filename = train_data_file
+            # classifier_filename = None
+            test(method_, test_text_file, result_file)
+
+
+def generate_dataset(paragraphs, data_file, label_file):
+    """generate dataset and label.
+
+    dataset format:
+        Q1:question1
+        A1:answer1
+        Q2:question2
+
+        Q3:question3
+        A2:answer2
+
+    label format: 0: new 1: follow-up
+        Q1:0
+        Q2:1
+        Q3:0
+
+    :param paragraphs: list[Paragraph]
+    :param data_file: str
+    :param label_file: str
+    """
+    result_pattern = u'{}{}:{}\n'
+    question_num = 1
+    answer_num = 1
+    with codecs.open(data_file, encoding='utf-8', mode='wb') as \
+            data, codecs.open(label_file, encoding='utf-8', mode='wb') as label:
+        for paragraph in paragraphs:
+            paragraph_lines = [result_pattern.format(
+                'Q', question_num,  paragraph.question.title)]
+            label_lines = [result_pattern.format('Q', question_num, 0)]
+            question_num += 1
+            for reply in paragraph.replies:
+                if reply.is_deleted == 1:
+                    continue
+                if reply.is_question():
+                    test_line = result_pattern.format('Q',  question_num,
+                                                      reply.content)
+                    label_line = result_pattern.format('Q',
+                                                       question_num, 1)
+                    label_lines.append(label_line)
+                    question_num += 1
+                else:
+                    test_line = result_pattern.format('A', answer_num,
+                                                      reply.content)
+                    answer_num += 1
+                paragraph_lines.append(test_line)
+            paragraph_lines.append('\n')
+            data.writelines(paragraph_lines)
+            label.writelines(label_lines)
 
 
 method_config = {
@@ -548,11 +616,11 @@ def main(argv):
         elif opt in '--train-data':
             method.configure(method_config)
             method_ = method.get_method('fan_yang')
-            train_data(method_, 'data/test-set.txt', 'data/train-data.csv')
+            generate_train_data(method_, 'data/test-set.txt', 'data/train-data.csv')
 
 
 if __name__ == '__main__':
     method.configure(method_config)
     fan_yang = method.get_method('fan_yang')
-    train_data(fan_yang, 'data/train-set-data.txt', 'data/train-set-label.txt',
+    generate_train_data(fan_yang, 'data/train-set-data.txt', 'data/train-set-label.txt',
                'data/train-data.txt')

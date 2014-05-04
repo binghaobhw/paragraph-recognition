@@ -5,7 +5,7 @@ import codecs
 import os
 import unittest
 from mock import Mock
-from experiment import DatasetGenerator, train_data
+from experiment import DatasetGenerator, generate_train_data
 
 
 class TestDatasetGenerator(unittest.TestCase):
@@ -55,7 +55,7 @@ class TestTrainData(unittest.TestCase):
                     u'Q4:1\n'
                     u'Q5:0\n'
                     u'Q6:1\n')
-        train_data(mock_method, dataset_filename, label_filename,
+        generate_train_data(mock_method, dataset_filename, label_filename,
                    train_set_filename)
         self.assertTrue(os.path.isfile(dataset_filename))
         self.assertTrue(os.path.isfile(label_filename))
