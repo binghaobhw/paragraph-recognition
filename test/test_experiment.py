@@ -6,8 +6,7 @@ from glob import glob
 import os
 import unittest
 from mock import Mock
-from experiment import DatasetGenerator, generate_train_data, k_fold_cross, \
-    method_config
+import experiment
 import method
 
 
@@ -15,7 +14,7 @@ class TestDatasetGenerator(unittest.TestCase):
     def test_generate(self):
         dataset_filename = 'data/test-set.test'
         label_filename = 'data/label.test'
-        dataset_generator = DatasetGenerator(dataset_filename, label_filename)
+        dataset_generator = experiment.DatasetGenerator(dataset_filename, label_filename)
         dataset_generator.generate(2)
         self.assertTrue(os.path.isfile(dataset_filename))
         self.assertTrue(os.path.isfile(label_filename))
@@ -58,7 +57,7 @@ class TestTrainData(unittest.TestCase):
                     u'Q4:1\n'
                     u'Q5:0\n'
                     u'Q6:1\n')
-        generate_train_data(mock_method, dataset_filename, label_filename,
+        experiment.generate_train_data(mock_method, dataset_filename, label_filename,
                    train_set_filename)
         self.assertTrue(os.path.isfile(dataset_filename))
         self.assertTrue(os.path.isfile(label_filename))
@@ -75,11 +74,28 @@ class TestTrainData(unittest.TestCase):
 
 class TestKFoldCross(unittest.TestCase):
     def test_k_fold_cross(self):
-        method.configure(method_config)
-        result = k_fold_cross(2, 10)
-        self.assertTrue(isinstance(result, dict))
+        method.configure(experiment.method_config)
+        method_names = method.methods.keys()
+        result = experiment.k_fold_cross(2, 10, method_names)
+        self.assertTrue(len(result) > 0)
         for f in glob('data/*-fold-cross-*'):
             os.remove(f)
+
+
+class TestAnalyzeFeature(unittest.TestCase):
+    def test_analyze_feature(self):
+        method.configure(experiment.method_config)
+        feature_names = method.ImprovedMethod.feature_names
+        expectation = {'origin': 0}
+        i = 0
+        for feature_name in feature_names:
+            i += 1
+            expectation[feature_name] = i
+        mock_k_fold_cross = Mock()
+        mock_k_fold_cross.side_effect = range(0, 9)
+        experiment.k_fold_cross = mock_k_fold_cross
+        result = experiment.analyze_feature('my_method', 2, 10)
+        self.assertDictEqual(result, expectation)
 
 
 if __name__ == '__main__':

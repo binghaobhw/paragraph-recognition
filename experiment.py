@@ -413,7 +413,93 @@ def adjust_len(path, output):
         f.write(json.dumps(result))
 
 
-def k_fold_cross(k, num):
+def analyze_feature(method_name, k, num):
+    """Analyze the effect without a feature one by one.
+
+    Example:
+        In: analyze_feature('my_method', 2, 10)
+        Out:
+            {
+                "origin": {
+                    "0": {
+                        "new": {
+                            "P": 0.0,
+                            "R": 0.0,
+                            "F1": 0.0
+                        },
+                        "follow": {
+                            ...
+                        },
+                        "all": {
+                            "P": 0.0
+                        }
+                    },
+                    "1": {
+                        ...
+                    },
+                    "average": {
+                        ...
+                    }
+                },
+                "same_named_entity": {
+                    ...
+                }
+            }
+    :param method_name: str
+    :param k: int
+    :param num: int
+    :return: dict
+    """
+    method_names = [method_name]
+    origin = k_fold_cross(k, num, method_names)
+    whole_result = {'origin': origin}
+    method_ = method.methods[method_name]
+    feature_names = method_.feature_names
+    for feature_name in feature_names:
+        method_.feature_names = feature_names[:]
+        method_.feature_names.remove(feature_name)
+        result = k_fold_cross(k, num, method_names)
+        whole_result[feature_name] = result[method_name]
+    return whole_result
+
+
+def k_fold_cross(k, num, method_names):
+    """Do k-fold cross test with named methods.
+
+    Example:
+        In: k_fold_cross(2, 10, ['my_method', 'fan_yang'])
+        Out:
+            {
+                "my_method": {
+                    "0": {
+                        "new": {
+                            "P": 0.0,
+                            "R": 0.0,
+                            "F1": 0.0
+                        },
+                        "follow": {
+                            ...
+                        },
+                        "all": {
+                            "P": 0.0
+                        }
+                    },
+                    "1": {
+                        ...
+                    },
+                    "average": {
+                        ...
+                    }
+                },
+                "fan_yang": {
+                    ...
+                }
+            }
+    :param k: int. num of fold
+    :param num: int
+    :param method_names: list[str]
+    :return: dict
+    """
     prefix = 'data'
     test_text_file_pattern = '{}/{}-fold-cross-test-text-{{}}.txt'.format(
         prefix, k)
@@ -431,7 +517,7 @@ def k_fold_cross(k, num):
         order_by(Paragraph.paragraph_id).limit(num).all()
     if len(paragraphs) != num:
         raise RuntimeError()
-
+    # generate dataset
     folds = [[] for i in range(0, k)]
     for i in range(0, num):
         folds[i % k].append(paragraphs[i])
@@ -445,9 +531,12 @@ def k_fold_cross(k, num):
         for j in range(0, k):
             if j != i:
                 train_set.extend(folds[j])
+        # generate test set
         generate_dataset(test_set, test_text_file, test_label_file)
+        # generate train set
         generate_dataset(train_set, train_text_file, train_label_file)
-        for name, method_ in method.methods.iteritems():
+        for name in method_names:
+            method_ = method.methods[name]
             train_data_file = train_data_file_pattern.format(name, i)
             result_file = result_file_pattern.format(name, i)
             if not isinstance(method_, method.DeBoni):
@@ -455,10 +544,11 @@ def k_fold_cross(k, num):
                                     train_data_file)
                 method_.train_data_filename = train_data_file
                 method_.classifier = None
+            # test
             test(method_, test_text_file, result_file)
     # average evaluation
     whole_result = {}
-    for name in method.methods.iterkeys():
+    for name in method_names:
         whole_result[name] = {}
         for i in range(0, k):
             result_file = result_file_pattern.format(name, i)
@@ -477,7 +567,7 @@ def k_fold_cross(k, num):
 
 
 def generate_dataset(paragraphs, data_file, label_file):
-    """generate dataset and label.
+    """Generate dataset and label.
 
     dataset format:
         Q1:question1
