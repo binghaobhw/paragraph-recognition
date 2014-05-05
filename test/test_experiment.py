@@ -2,10 +2,13 @@
 # coding: utf-8
 
 import codecs
+from glob import glob
 import os
 import unittest
 from mock import Mock
-from experiment import DatasetGenerator, generate_train_data
+from experiment import DatasetGenerator, generate_train_data, k_fold_cross, \
+    method_config
+import method
 
 
 class TestDatasetGenerator(unittest.TestCase):
@@ -68,6 +71,15 @@ class TestTrainData(unittest.TestCase):
         os.remove(dataset_filename)
         os.remove(label_filename)
         os.remove(train_set_filename)
+
+
+class TestKFoldCross(unittest.TestCase):
+    def test_k_fold_cross(self):
+        method.configure(method_config)
+        result = k_fold_cross(2, 10)
+        self.assertTrue(isinstance(result, dict))
+        for f in glob('data/*-fold-cross-*'):
+            os.remove(f)
 
 
 if __name__ == '__main__':

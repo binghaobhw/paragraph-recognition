@@ -107,7 +107,8 @@ def test(method_, test_set_filename, result_filename):
     :param result_filename: str
     """
     with codecs.open(test_set_filename, encoding='utf-8') as test_set, \
-            codecs.open(result_filename, encoding='utf-8', mode='wb') as result_file:
+            codecs.open(result_filename, encoding='utf-8', mode='wb') as \
+            result_file:
         logger.info('start to test all')
         history_questions = []
         previous_answer_text = None
@@ -413,12 +414,19 @@ def adjust_len(path, output):
 
 
 def k_fold_cross(k, num):
-    test_text_file_pattern = '{}-fold-cross-test-text-{{}}.txt'.format(k)
-    test_label_file_pattern = '{}-fold-cross-test-label-{{}}.txt'.format(k)
-    train_text_file_pattern = '{}-fold-cross-train-text-{{}}.txt'.format(k)
-    train_label_file_pattern = '{}-fold-cross-train-label-{{}}.txt'.format(k)
-    result_file_pattern = '{}-fold-cross-result-{{}}-{{}}.txt'.format(k)
-    train_data_file_pattern = '{}-fold-cross-train-data-{{}}-{{}}.txt'.format(k)
+    prefix = 'data'
+    test_text_file_pattern = '{}/{}-fold-cross-test-text-{{}}.txt'.format(
+        prefix, k)
+    test_label_file_pattern = '{}/{}-fold-cross-test-label-{{}}.txt'.format(
+        prefix, k)
+    train_text_file_pattern = '{}/{}-fold-cross-train-text-{{}}.txt'.format(
+        prefix, k)
+    train_label_file_pattern = '{}/{}-fold-cross-train-label-{{}}.txt'.format(
+        prefix, k)
+    result_file_pattern = '{}/{}-fold-cross-result-{{}}-{{}}.txt'.format(
+        prefix, k)
+    train_data_file_pattern = '{}/{}-fold-cross-train-data-{{}}-{{}}.txt'.\
+        format(prefix, k)
     paragraphs = Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
         order_by(Paragraph.paragraph_id).limit(num).all()
     if len(paragraphs) != num:
@@ -442,11 +450,30 @@ def k_fold_cross(k, num):
         for name, method_ in method.methods.iteritems():
             train_data_file = train_data_file_pattern.format(name, i)
             result_file = result_file_pattern.format(name, i)
-            generate_train_data(method_, train_text_file, train_label_file,
-                                train_data_file)
-            method_.train_data_filename = train_data_file
-            # classifier_filename = None
+            if not isinstance(method_, method.DeBoni):
+                generate_train_data(method_, train_text_file, train_label_file,
+                                    train_data_file)
+                method_.train_data_filename = train_data_file
+                method_.classifier = None
             test(method_, test_text_file, result_file)
+    # average evaluation
+    whole_result = {}
+    for name in method.methods.iterkeys():
+        whole_result[name] = {}
+        for i in range(0, k):
+            result_file = result_file_pattern.format(name, i)
+            test_label_file = test_label_file_pattern.format(i)
+            result = evaluate(result_file, test_label_file)
+            whole_result[name][i] = result
+        whole_result[name]['average'] = {
+            'new': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'follow': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'all': {'P': 0.0}}
+        for k1, v1 in whole_result[name]['average'].iteritems():
+            for k2 in v1:
+                v1[k2] = sum(whole_result[name][num][k1][k2] for num in
+                             range(0, k)) / k
+    return whole_result
 
 
 def generate_dataset(paragraphs, data_file, label_file):
@@ -525,23 +552,21 @@ method_config = {
         }
     },
     'method': {
-        'fan_yang': {
-            'class': 'FanYang',
-            'feature_manager': 'fm',
-            'train_data_filename': 'data/fan-yang-train-set.txt',
-            'classifier_filename': 'data/fan-yang.classifier'
-        },
         'de_boni': {
             'class': 'DeBoni',
             'feature_manager': 'fm',
             'q_q_threshold': 0.89,
             'q_a_threshold': 0.89
         },
+        'fan_yang': {
+            'class': 'FanYang',
+            'feature_manager': 'fm',
+            'train_data_filename': 'data/fan-yang-train-set.txt'
+        },
         'my_method': {
             'class': 'ImprovedMethod',
             'feature_manager': 'fm',
-            'train_data_filename': 'data/my-method-train-set.txt',
-            'classifier_filename': 'data/my-method.classifier'
+            'train_data_filename': 'data/my-method-train-set.txt'
         }
     }
 }

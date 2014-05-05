@@ -153,6 +153,8 @@ class SentenceSimilarityCalculator(object):
         :param b: AnalyzedSentence
         :return: float
         """
+        if not b:
+            return 0.0
         if not isinstance(a, AnalyzedSentence):
             raise TypeError('type of a: {}'.format(a.__class__))
         if not isinstance(b, AnalyzedSentence):
@@ -562,9 +564,8 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
 
 
 class AbstractMethod(object):
-    def __init__(self, feature_manager, train_data_filename):
+    def __init__(self, feature_manager):
         self.feature_manager = feature_manager
-        self.train_data_filename = train_data_filename
 
     def is_follow_up(self, question, history_questions, previous_answer):
         """Predict whether the question is follow-up.
@@ -625,7 +626,8 @@ class FanYang(AbstractMethod):
 
     def __init__(self, feature_manager, train_data_filename,
                  classifier_filename=None):
-        super(FanYang, self).__init__(feature_manager, train_data_filename)
+        super(FanYang, self).__init__(feature_manager)
+        self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
 
     def __del__(self):
