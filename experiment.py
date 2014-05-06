@@ -496,17 +496,18 @@ def k_fold_cross(k, num, method_name, unique_word):
     :param unique_word: str
     :return: dict
     """
+    file_names = k_fold_cross_dataset(k, num)
     method_ = method.methods[method_name]
-    file_names = k_fold_cross_dataset(k, num, unique_word)
-    file_pattern = file_names['file_pattern']
+    file_pattern = 'data/{k}-fold-cross-{unique_word}-{{type}}-{{i}}.txt'.\
+        format(k=k, unique_word=unique_word)
     whole_result = {}
     for i in range(0, k):
         test_text_file = file_names[i]['test_text']
         test_label_file = file_names[i]['test_label']
         train_text_file = file_names[i]['train_text']
         train_label_file = file_names[i]['train_label']
-        train_data_file = file_pattern.format(type='train-data').format(i=i)
-        result_file = file_pattern.format(type='result').format(i=i)
+        train_data_file = file_pattern.format(type='train-data', i=i)
+        result_file = file_pattern.format(type='result', i=i)
         if not isinstance(method_, method.DeBoni):
             generate_train_data(method_, train_text_file, train_label_file,
                                 train_data_file)
@@ -528,71 +529,77 @@ def k_fold_cross(k, num, method_name, unique_word):
     return whole_result
 
 
-def k_fold_cross_dataset(k, num, unique_word):
+def k_fold_cross_dataset(k, num):
     """Generate k-fold cross test set and train set.
 
     Example:
-        In: k_fold_cross_dataset(2, 10, 'foo')
+        In: k_fold_cross_dataset(2, 10)
         Out:
             {
-                'file_pattern': 'data/2-fold-cross-foo-{type}-{{i}}.txt',
                 1: {
-                    'test_text': 'data/2-fold-cross-foo-test-text-1.txt',
-                    'test_label': 'data/2-fold-cross-foo-test-label-1.txt',
-                    'train_text': 'data/2-fold-cross-foo-train-text-1.txt',
-                    'train_label': 'data/2-fold-cross-foo-train-label-1.txt',
+                    'test_text': 'data/2-fold-cross-10-test-text-1.txt',
+                    'test_label': 'data/2-fold-cross-10-test-label-1.txt',
+                    'train_text': 'data/2-fold-cross-10-train-text-1.txt',
+                    'train_label': 'data/2-fold-cross-10-train-label-1.txt',
                 },
                 2: {
-                    'test_text': 'data/2-fold-cross-foo-test-text-2.txt',
-                    'test_label': 'data/2-fold-cross-foo-test-label-2.txt',
-                    'train_text': 'data/2-fold-cross-foo-train-text-2.txt',
-                    'train_label': 'data/2-fold-cross-foo-train-label-2.txt',
+                    'test_text': 'data/2-fold-cross-10-test-text-2.txt',
+                    'test_label': 'data/2-fold-cross-10-test-label-2.txt',
+                    'train_text': 'data/2-fold-cross-10-train-text-2.txt',
+                    'train_label': 'data/2-fold-cross-10-train-label-2.txt',
                 }
             }
 
-    :param k:
-    :param num:
-    :param unique_word:
+    :param k: int
+    :param num: int
     :return: dict :raise RuntimeError:
     """
-    prefix = 'data/{k}-fold-cross-{unique_word}'.format(k=k,
-                                                        unique_word=unique_word)
+    prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=num) 
     file_pattern = '{prefix}-{{type}}-{{{{i}}}}.txt'.format(prefix=prefix)
-    file_names = {'file_pattern': file_pattern}
     test_text_file_pattern = file_pattern.format(type='test-text')
     test_label_file_pattern = file_pattern.format(type='test-label')
     train_text_file_pattern = file_pattern.format(type='train-text')
     train_label_file_pattern = file_pattern.format(type='train-label')
-    paragraphs = Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
-        order_by(Paragraph.paragraph_id).limit(num).all()
-    if len(paragraphs) != num:
-        raise RuntimeError()
-    folds = [[] for i in range(0, k)]
-    for i in range(0, num):
-        folds[i % k].append(paragraphs[i])
+    file_names = {}
     for i in range(0, k):
         test_text_file = test_text_file_pattern.format(i=i)
         test_label_file = test_label_file_pattern.format(i=i)
         train_text_file = train_text_file_pattern.format(i=i)
         train_label_file = train_label_file_pattern.format(i=i)
-        test_set = folds[i]
-        train_set = []
-        for j in range(0, k):
-            if j != i:
-                train_set.extend(folds[j])
-        # generate test set
-        if not os.path.isfile(test_text_file) or \
-                not os.path.isfile(test_label_file):
-            generate_dataset(test_set, test_text_file, test_label_file)
-        # generate train set
-        if not os.path.isfile(train_text_file) or \
-                not os.path.isfile(train_label_file):
-            generate_dataset(train_set, train_text_file, train_label_file)
         file_names[i] = {'test_text': test_text_file,
                          'test_label': test_label_file,
                          'train_text': train_text_file,
                          'train_label': train_label_file}
-    return file_names
+    exist = True
+    for i in file_names:
+        for file_ in file_names[i]:
+            if not os.path.isfile(file_):
+                exist = False
+                break
+    if not exist:
+        paragraphs = Session.query(Paragraph).filter(
+            Paragraph.is_deleted == 0).order_by(
+            Paragraph.paragraph_id).limit(num).all()
+        if len(paragraphs) != num:
+            raise RuntimeError()
+        folds = [[] for i in range(0, k)]
+        for i in range(0, num):
+            folds[i % k].append(paragraphs[i])
+        for i in range(0, k):
+            test_text_file = file_names[i]['test_text']
+            test_label_file = file_names[i]['test_label']
+            train_text_file = file_names[i]['train_text']
+            train_label_file = file_names[i]['train_label']
+            test_set = folds[i]
+            train_set = []
+            for j in range(0, k):
+                if j != i:
+                    train_set.extend(folds[j])
+            # generate test set
+            generate_dataset(test_set, test_text_file, test_label_file)
+            # generate train set
+            generate_dataset(train_set, train_text_file, train_label_file)
+    return file_names            
 
 
 def generate_dataset(paragraphs, data_file, label_file):

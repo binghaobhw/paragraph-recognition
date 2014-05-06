@@ -9,9 +9,137 @@
             src="http://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
-<div>DIR: <input id="path" type="text" style="width: 50%"/></div>
-<div><input id='file' type='file' multiple/></div>
-<div id="diagrams"></div>
+<div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+<div id="container1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+<script type="text/javascript">
+    var path = 'data/3-method-comparison.json'
+    $.getJSON(path, function(data) {
+        var categories = ['new', 'follow'];
+        var series = [];
+        for (var methodName in data) {
+            seriesData = {name: methodName};
+            seriesData.data = [data[methodName]['average']['new']['F1'],
+                               data[methodName]['average']['follow']['F1']
+            ];
+            series.push(seriesData);
+        }
+        $(function () {
+            $('#container').highcharts({
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: path
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    endOnTick: false,
+                    min: 0,
+                    title: {
+                        text: 'rate'
+                    }
+                },
+                tooltip: {
+                    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                        '<td style="padding:0"><b>{point.y:.3f}</b></td></tr>',
+                    footerFormat: '</table>',
+                    shared: true,
+                    useHTML: true
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        dataLabels: {
+                            overflow: 'none',
+                            crop: false,
+                            enabled: true,
+                            format: '{y:.3f}'
+                        }
+                    }
+                },
+                series: series
+            });
+        });
+    })
+    path = 'data/analyze-feature.json'
+    $.getJSON(path, function(data) {
+        var categories = [];
+        var originNew = 0;
+        var originFollow = 0;
+        var dataNew = {name: 'new', data: []};
+        var dataFollow = {name: 'follow', data: []};
+        for (var featureName in data) {
+            dataNew.data.push([data[featureName]['average']['new']['F1']]);
+            dataFollow.data.push([data[featureName]['average']['follow']['F1']]);
+            if (featureName == 'origin') {
+                originNew = dataNew.data.pop();
+                originFollow = dataFollow.data.pop();
+                continue;
+            }
+            categories.push(featureName)
+        }
+        var series = [dataNew, dataFollow]
+        $(function () {
+            $('#container1').highcharts({
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: path
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: 'rate'
+                    },
+                    endOnTick: false,
+                    plotLines: [
+                        {
+                            color: '#7FB5EC',
+                            width: 2,
+                            value: originNew,
+                            zIndex: 5
+                        },
+                        {
+                            color: '#434348',
+                            width: 2,
+                            value: originFollow,
+                            zIndex: 5
+                        }]
+                },
+                tooltip: {
+                    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                        '<td style="padding:0"><b>{point.y:.3f}</b></td></tr>',
+                    footerFormat: '</table>',
+                    shared: true,
+                    useHTML: true
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        dataLabels: {
+                            crop: false,
+                            overflow: 'none',
+                            enabled: true,
+                            format: '{y:.3f}'
+                        }
+                    }
+                },
+                series: series
+            });
+        });
+    })
+
+</script>
 <script type='text/javascript'>
     $(document).ready(function() {
         var followOptions = {
