@@ -3,6 +3,7 @@
 import codecs
 from collections import deque
 import getopt
+from glob import glob
 import hashlib
 import json
 import logging
@@ -413,157 +414,185 @@ def adjust_len(path, output):
         f.write(json.dumps(result))
 
 
-def analyze_feature(method_name, k, num):
+def analyze_feature(k, num, method_name):
     """Analyze the effect without a feature one by one.
 
     Example:
-        In: analyze_feature('my_method', 2, 10)
+        In: analyze_feature(2, 10, method_name)
         Out:
             {
-                "origin": {
-                    "0": {
-                        "new": {
-                            "P": 0.0,
-                            "R": 0.0,
-                            "F1": 0.0
+                'origin': {
+                    0: {
+                        'new': {
+                            'P': 0.0,
+                            'R': 0.0,
+                            'F1': 0.0
                         },
-                        "follow": {
+                        'follow': {
                             ...
                         },
-                        "all": {
-                            "P": 0.0
+                        'all': {
+                            'P': 0.0
                         }
                     },
-                    "1": {
+                    1: {
                         ...
                     },
-                    "average": {
+                    'average': {
                         ...
                     }
                 },
-                "same_named_entity": {
+                'same_named_entity': {
                     ...
                 }
             }
-    :param method_name: str
     :param k: int
     :param num: int
+    :param method_name: str
     :return: dict
     """
-    method_names = [method_name]
-    origin = k_fold_cross(k, num, method_names)
+    origin = k_fold_cross(k, num, method_name, 'origin')
     whole_result = {'origin': origin}
     method_ = method.methods[method_name]
     feature_names = method_.feature_names
     for feature_name in feature_names:
         method_.feature_names = feature_names[:]
         method_.feature_names.remove(feature_name)
-        result = k_fold_cross(k, num, method_names)
-        whole_result[feature_name] = result[method_name]
+        result = k_fold_cross(k, num, method_name, feature_name)
+        whole_result[feature_name] = result
     return whole_result
 
 
-def k_fold_cross(k, num, method_names):
-    """Do k-fold cross test with named methods.
+def k_fold_cross(k, num, method_name, unique_word):
+    """Do k-fold cross test with named method.
 
     Example:
-        In: k_fold_cross(2, 10, ['my_method', 'fan_yang'])
+        In: k_fold_cross(2, 10, 'my_method', 'initial')
         Out:
             {
-                "my_method": {
-                    "0": {
-                        "new": {
-                            "P": 0.0,
-                            "R": 0.0,
-                            "F1": 0.0
-                        },
-                        "follow": {
-                            ...
-                        },
-                        "all": {
-                            "P": 0.0
-                        }
+                0: {
+                    'new': {
+                        'P': 0.0,
+                        'R': 0.0,
+                        'F1': 0.0
                     },
-                    "1": {
+                    'follow': {
                         ...
                     },
-                    "average": {
-                        ...
+                    'all': {
+                        'P': 0.0
                     }
                 },
-                "fan_yang": {
+                1: {
+                    ...
+                },
+                'average': {
                     ...
                 }
             }
     :param k: int. num of fold
     :param num: int
-    :param method_names: list[str]
+    :param method_name: str
+    :param unique_word: str
     :return: dict
     """
-    prefix = 'data'
-    test_text_file_pattern = '{}/{}-fold-cross-test-text-{{}}.txt'.format(
-        prefix, k)
-    test_label_file_pattern = '{}/{}-fold-cross-test-label-{{}}.txt'.format(
-        prefix, k)
-    train_text_file_pattern = '{}/{}-fold-cross-train-text-{{}}.txt'.format(
-        prefix, k)
-    train_label_file_pattern = '{}/{}-fold-cross-train-label-{{}}.txt'.format(
-        prefix, k)
-    result_file_pattern = '{}/{}-fold-cross-result-{{}}-{{}}.txt'.format(
-        prefix, k)
-    train_data_file_pattern = '{}/{}-fold-cross-train-data-{{}}-{{}}.txt'.\
-        format(prefix, k)
+    method_ = method.methods[method_name]
+    file_names = k_fold_cross_dataset(k, num, unique_word)
+    file_pattern = file_names['file_pattern']
+    whole_result = {}
+    for i in range(0, k):
+        test_text_file = file_names[i]['test_text']
+        test_label_file = file_names[i]['test_label']
+        train_text_file = file_names[i]['train_text']
+        train_label_file = file_names[i]['train_label']
+        train_data_file = file_pattern.format(type='train-data').format(i=i)
+        result_file = file_pattern.format(type='result').format(i=i)
+        if not isinstance(method_, method.DeBoni):
+            generate_train_data(method_, train_text_file, train_label_file,
+                                train_data_file)
+            method_.train_data_filename = train_data_file
+            method_.classifier = None
+        # test
+        test(method_, test_text_file, result_file)
+        # evaluate
+        result = evaluate(result_file, test_label_file)
+        whole_result[i] = result
+    whole_result['average'] = {
+        'new': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'follow': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'all': {'P': 0.0}}
+    for k1, v1 in whole_result['average'].iteritems():
+        for k2 in v1:
+            v1[k2] = sum(whole_result[num][k1][k2] for num in
+                         range(0, k)) / k
+    return whole_result
+
+
+def k_fold_cross_dataset(k, num, unique_word):
+    """Generate k-fold cross test set and train set.
+
+    Example:
+        In: k_fold_cross_dataset(2, 10, 'foo')
+        Out:
+            {
+                'file_pattern': 'data/2-fold-cross-foo-{type}-{{i}}.txt',
+                1: {
+                    'test_text': 'data/2-fold-cross-foo-test-text-1.txt',
+                    'test_label': 'data/2-fold-cross-foo-test-label-1.txt',
+                    'train_text': 'data/2-fold-cross-foo-train-text-1.txt',
+                    'train_label': 'data/2-fold-cross-foo-train-label-1.txt',
+                },
+                2: {
+                    'test_text': 'data/2-fold-cross-foo-test-text-2.txt',
+                    'test_label': 'data/2-fold-cross-foo-test-label-2.txt',
+                    'train_text': 'data/2-fold-cross-foo-train-text-2.txt',
+                    'train_label': 'data/2-fold-cross-foo-train-label-2.txt',
+                }
+            }
+
+    :param k:
+    :param num:
+    :param unique_word:
+    :return: dict :raise RuntimeError:
+    """
+    prefix = 'data/{k}-fold-cross-{unique_word}'.format(k=k,
+                                                        unique_word=unique_word)
+    file_pattern = '{prefix}-{{type}}-{{{{i}}}}.txt'.format(prefix=prefix)
+    file_names = {'file_pattern': file_pattern}
+    test_text_file_pattern = file_pattern.format(type='test-text')
+    test_label_file_pattern = file_pattern.format(type='test-label')
+    train_text_file_pattern = file_pattern.format(type='train-text')
+    train_label_file_pattern = file_pattern.format(type='train-label')
     paragraphs = Session.query(Paragraph).filter(Paragraph.is_deleted == 0).\
         order_by(Paragraph.paragraph_id).limit(num).all()
     if len(paragraphs) != num:
         raise RuntimeError()
-    # generate dataset
     folds = [[] for i in range(0, k)]
     for i in range(0, num):
         folds[i % k].append(paragraphs[i])
     for i in range(0, k):
-        test_text_file = test_text_file_pattern.format(i)
-        test_label_file = test_label_file_pattern.format(i)
-        train_text_file = train_text_file_pattern.format(i)
-        train_label_file = train_label_file_pattern.format(i)
+        test_text_file = test_text_file_pattern.format(i=i)
+        test_label_file = test_label_file_pattern.format(i=i)
+        train_text_file = train_text_file_pattern.format(i=i)
+        train_label_file = train_label_file_pattern.format(i=i)
         test_set = folds[i]
         train_set = []
         for j in range(0, k):
             if j != i:
                 train_set.extend(folds[j])
         # generate test set
-        generate_dataset(test_set, test_text_file, test_label_file)
+        if not os.path.isfile(test_text_file) or \
+                not os.path.isfile(test_label_file):
+            generate_dataset(test_set, test_text_file, test_label_file)
         # generate train set
-        generate_dataset(train_set, train_text_file, train_label_file)
-        for name in method_names:
-            method_ = method.methods[name]
-            train_data_file = train_data_file_pattern.format(name, i)
-            result_file = result_file_pattern.format(name, i)
-            if not isinstance(method_, method.DeBoni):
-                generate_train_data(method_, train_text_file, train_label_file,
-                                    train_data_file)
-                method_.train_data_filename = train_data_file
-                method_.classifier = None
-            # test
-            test(method_, test_text_file, result_file)
-    # average evaluation
-    whole_result = {}
-    for name in method_names:
-        whole_result[name] = {}
-        for i in range(0, k):
-            result_file = result_file_pattern.format(name, i)
-            test_label_file = test_label_file_pattern.format(i)
-            result = evaluate(result_file, test_label_file)
-            whole_result[name][i] = result
-        whole_result[name]['average'] = {
-            'new': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
-            'follow': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
-            'all': {'P': 0.0}}
-        for k1, v1 in whole_result[name]['average'].iteritems():
-            for k2 in v1:
-                v1[k2] = sum(whole_result[name][num][k1][k2] for num in
-                             range(0, k)) / k
-    return whole_result
+        if not os.path.isfile(train_text_file) or \
+                not os.path.isfile(train_label_file):
+            generate_dataset(train_set, train_text_file, train_label_file)
+        file_names[i] = {'test_text': test_text_file,
+                         'test_label': test_label_file,
+                         'train_text': train_text_file,
+                         'train_label': train_label_file}
+    return file_names
 
 
 def generate_dataset(paragraphs, data_file, label_file):

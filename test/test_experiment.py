@@ -75,10 +75,10 @@ class TestTrainData(unittest.TestCase):
 class TestKFoldCross(unittest.TestCase):
     def test_k_fold_cross(self):
         method.configure(experiment.method_config)
-        method_names = method.methods.keys()
-        result = experiment.k_fold_cross(2, 10, method_names)
-        self.assertTrue(len(result) > 0)
-        for f in glob('data/*-fold-cross-*'):
+        result = experiment.k_fold_cross(2, 10, 'my_method', 'my-method')
+        self.assertEqual(len(result), 3)
+        file_pattern = 'data/2-fold-cross-my-method*'
+        for f in glob(file_pattern):
             os.remove(f)
 
 
@@ -94,8 +94,18 @@ class TestAnalyzeFeature(unittest.TestCase):
         mock_k_fold_cross = Mock()
         mock_k_fold_cross.side_effect = range(0, 9)
         experiment.k_fold_cross = mock_k_fold_cross
-        result = experiment.analyze_feature('my_method', 2, 10)
+        result = experiment.analyze_feature(2, 10, 'my_method')
         self.assertDictEqual(result, expectation)
+
+
+class TestKFoldCrossDataset(unittest.TestCase):
+    def test_k_fold_cross_dataset(self):
+        method.configure(experiment.method_config)
+        result = experiment.k_fold_cross_dataset(2, 10, 'foo')
+        self.assertEqual(len(result), 3)
+        file_pattern = '{}*'.format(result['file_pattern'])
+        for f in glob(file_pattern):
+            os.remove(f)
 
 
 if __name__ == '__main__':
