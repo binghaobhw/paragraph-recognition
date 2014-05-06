@@ -111,7 +111,8 @@ def test(method_, test_set_filename, result_filename):
             codecs.open(result_filename, encoding='utf-8', mode='wb') as \
             result_file:
         logger.info('start to test all')
-        history_questions = []
+        context_window = 5
+        history_questions = deque(maxlen=context_window)
         previous_answer_text = None
         last_is_answer = False
         for line in test_set:
@@ -132,8 +133,6 @@ def test(method_, test_set_filename, result_filename):
                                              previous_answer)
             logger.info('finished testing %s, follow_up: %s', prefix,
                         follow_up)
-            if not follow_up:
-                history_questions = []
             result_file.write('{}:{:d}\n'.format(prefix, follow_up))
             history_questions.append(question)
         logger.info('finished testing all')

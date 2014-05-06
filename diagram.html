@@ -12,7 +12,7 @@
 <div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 <div id="container1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 <script type="text/javascript">
-    var path = 'data/3-method-comparison.json'
+    var path = 'data/3-method-comparison.json';
     $.getJSON(path, function(data) {
         var categories = ['new', 'follow'];
         var series = [];
@@ -64,8 +64,8 @@
                 series: series
             });
         });
-    })
-    path = 'data/analyze-feature.json'
+    });
+    path = 'data/analyze-feature.json';
     $.getJSON(path, function(data) {
         var categories = [];
         var originNew = 0;
@@ -82,7 +82,7 @@
             }
             categories.push(featureName)
         }
-        var series = [dataNew, dataFollow]
+        var series = [dataNew, dataFollow];
         $(function () {
             $('#container1').highcharts({
                 chart: {
@@ -137,7 +137,7 @@
                 series: series
             });
         });
-    })
+    });
 
 </script>
 <script type='text/javascript'>
@@ -206,10 +206,10 @@
                         rNew.push([data[i].threshold, data[i].result.N.R]);
                         f1New.push([data[i].threshold, data[i].result.N.F1]);
                     }
-                    followOptions.series = []
+                    followOptions.series = [];
                     followOptions.series.push({name: 'P', data: pFollow},
                             {name: 'R', data: rFollow}, {name: 'F1', data: f1Follow});
-                    newOptions.series = []
+                    newOptions.series = [];
                     newOptions.series.push({name: 'P', data: pNew},
                             {name: 'R', data: rNew}, {name: 'F1', data: f1New});
                     divFollow.highcharts(followOptions);
