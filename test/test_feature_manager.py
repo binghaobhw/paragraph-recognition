@@ -80,7 +80,7 @@ class TestFeatureManager(TestCase):
         mock_question.has_sbv.return_value = False
         mock_question.has_vob.return_value = True
         context = {'question': mock_question}
-        result = FeatureManager.has_sbv_or_vob(context)
+        result = FeatureManager.has_sbv_and_vob(context)
         self.assertTrue(result)
 
     def test_largest_question_similarity(self):

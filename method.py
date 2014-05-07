@@ -70,12 +70,30 @@ class AnalyzedSentence(object):
 
     def has_pronoun(self):
         len_threshold = 10
-        if self.word_count() < len_threshold:
-            for pronoun in self.pronouns():
-                if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT \
-                        or pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
+        for pronoun in self.pronouns():
+            if pronoun['cont'] in THIRD_PERSON_PRONOUN_DICT or \
+                    pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
+                index = self.index(pronoun)
+                if index[0] == 0 and index[1] <= len_threshold:
                     return True
+                else:
+                    return False
         return False
+
+    def index(self, word):
+        """Return index of word.
+
+        :param word: dict
+        :return: (int, int)
+        """
+        sentence_index = 0
+        for s in self.sentences():
+            try:
+                return sentence_index, s.index(word)
+            except ValueError:
+                sentence_index += 1
+                continue
+        return -1, -1
 
     def word_count(self):
         return sum(len(s) for s in self.sentences())
@@ -718,7 +736,7 @@ class FeatureManager(object):
             'proper_noun': self.has_proper_noun,
             'noun': self.has_noun,
             'verb': self.has_verb,
-            'sbv_or_vob': self.has_sbv_or_vob,
+            'sbv_or_vob': self.has_sbv_and_vob,
             'same_named_entity': self.has_same_named_entity,
             'largest_similarity': self.largest_similarity,
             'qa_similarity': self.qa_similarity,
@@ -792,14 +810,14 @@ class FeatureManager(object):
         return False
 
     @staticmethod
-    def has_sbv_or_vob(context):
-        """Determine whether question has subject-verb structure.
+    def has_sbv_and_vob(context):
+        """Determine whether question has subject-verb and verb-object structure.
 
         :param context: dict
         :return: bool
         """
         question = context['question']
-        result = question.has_sbv() or question.has_vob()
+        result = question.has_sbv() and question.has_vob()
         return result
 
     def largest_question_similarity(self, context):
