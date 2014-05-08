@@ -705,7 +705,7 @@ class ImprovedMethod(FanYang):
         'pronoun',
         'cue_word',
         'noun',
-        'sbv_or_vob',
+        'sbv_and_vob',
         'same_named_entity',
         'word_recurrence_rate',
         'adjacent_question_length_difference',
@@ -736,7 +736,7 @@ class FeatureManager(object):
             'proper_noun': self.has_proper_noun,
             'noun': self.has_noun,
             'verb': self.has_verb,
-            'sbv_or_vob': self.has_sbv_and_vob,
+            'sbv_and_vob': self.has_sbv_and_vob,
             'same_named_entity': self.has_same_named_entity,
             'largest_similarity': self.largest_similarity,
             'qa_similarity': self.qa_similarity,
@@ -761,6 +761,7 @@ class FeatureManager(object):
             feature_method = self.feature_name_method_map[feature_name]
             feature = feature_method(context)
             features.append(feature)
+        logger.info('%s', features)
         return features
 
     @staticmethod

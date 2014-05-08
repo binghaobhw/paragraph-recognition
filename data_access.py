@@ -121,3 +121,21 @@ class LtpResult(Base):
 
     def __str__(self):
         return self.__repr__()
+
+
+class FilteredParagraph(Base):
+    __tablename__ = 'filtered_paragraph'
+
+    id = Column(BIGINT(unsigned=True), primary_key=True)
+    paragraph_id = Column(BIGINT(unsigned=True),
+                          ForeignKey('zhidao_paragraph.paragraph_id'))
+    title = Column(VARCHAR(1000))
+
+    paragraph = relationship('Paragraph')
+
+    def __repr__(self):
+        return "<FilteredParagraph(id='%s', paragraph_id='%s', title='%s')>" \
+               % (self.id, self.paragraph_id, self.title)
+
+    def __str__(self):
+        return self.__repr__()

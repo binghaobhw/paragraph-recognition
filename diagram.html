@@ -65,8 +65,8 @@
             });
         });
     });
-    path = 'data/analyze-feature.json';
-    $.getJSON(path, function(data) {
+    var path1 = 'data/analyze-feature.json';
+    $.getJSON(path1, function(data) {
         var categories = [];
         var originNew = 0;
         var originFollow = 0;
@@ -89,13 +89,13 @@
                     type: 'column'
                 },
                 title: {
-                    text: path
+                    text: path1
                 },
                 xAxis: {
                     categories: categories
                 },
                 yAxis: {
-                    min: 0,
+                    min: 0.5,
                     title: {
                         text: 'rate'
                     },
@@ -103,15 +103,29 @@
                     plotLines: [
                         {
                             color: '#7FB5EC',
-                            width: 2,
+                            width: 1,
                             value: originNew,
-                            zIndex: 5
+                            zIndex: 5,
+                            dashStyle : 'shortdash',
+                            label: {
+                                text: 'origin new',
+                                textAlign: 'right',
+                                x: -5,
+                                y: 0
+                            }
                         },
                         {
                             color: '#434348',
-                            width: 2,
+                            width: 1,
                             value: originFollow,
-                            zIndex: 5
+                            zIndex: 5,
+                            dashStyle : 'shortdash',
+                            label: {
+                                text: 'origin follow',
+                                textAlign: 'right',
+                                x: -5,
+                                y: 0
+                            }
                         }]
                 },
                 tooltip: {

@@ -3,16 +3,15 @@
 import codecs
 from collections import deque
 import getopt
-from glob import glob
 import hashlib
 import json
 import logging
 import logging.config
 import os
-import sys
+import random
 import re
 import requests
-from data_access import Session, LtpResult, Paragraph
+from data_access import Session, LtpResult, Paragraph, FilteredParagraph
 from log_config import LOG_PROJECT_NAME, LOGGING
 from method import AnalyzedSentence
 import method
@@ -52,19 +51,21 @@ def truncate(text):
 
 
 def analyze(text):
+    logger.info('try to invoke ltp api, %s', text)
     response = requests.get(LTP_URL, params=build_param(text), timeout=60)
-    if not response.ok:
-        if response.status_code == 400 and \
-                response.json()['error_message'] == 'SENTENCE TOO LONG':
-            logger.info('sentence too long, truncate')
-            truncated_text = truncate(text)
-            response = requests.get(LTP_URL,
-                                    params=build_param(truncated_text),
-                                    timeout=60)
-        else:
-            raise RuntimeError('bad response code={} url={} text={}'.format(
-                response.status_code, response.url, response.text))
-    return response.json()
+    if (response.status_code == 400 and
+                response.json()['error_message'] == 'SENTENCE TOO LONG') or \
+            (response.ok and response.text.startswith('<html')):
+        logger.info('sentence too long, truncate')
+        truncated_text = truncate(text)
+        response = requests.get(LTP_URL,
+                                params=build_param(truncated_text),
+                                timeout=60)
+    if response.ok:
+        return response.json()
+    else:
+        raise RuntimeError('bad response code={} url={} text={}'.format(
+            response.status_code, response.url, response.text))
 
 
 def save_analyzed_result(md5_string, result_json):
@@ -110,7 +111,7 @@ def test(method_, test_set_filename, result_filename):
     with codecs.open(test_set_filename, encoding='utf-8') as test_set, \
             codecs.open(result_filename, encoding='utf-8', mode='wb') as \
             result_file:
-        logger.info('start to test all')
+        logger.info('test %s', test_set_filename)
         context_window = 5
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
@@ -128,14 +129,11 @@ def test(method_, test_set_filename, result_filename):
             previous_answer = get_analyzed_result(previous_answer_text) \
                 if last_is_answer else None
             last_is_answer = False
-            logger.info('start to test %s', prefix)
+            logger.info('test %s', prefix)
             follow_up = method_.is_follow_up(question, history_questions,
                                              previous_answer)
-            logger.info('finished testing %s, follow_up: %s', prefix,
-                        follow_up)
             result_file.write('{}:{:d}\n'.format(prefix, follow_up))
             history_questions.append(question)
-        logger.info('finished testing all')
 
 
 def evaluate(result_filename, label_filename):
@@ -242,105 +240,6 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
         result.append({'threshold': threshold, 'result': evaluation_result})
     with codecs.open(output_name, encoding='utf-8', mode='wb') as f:
         f.write(json.dumps(result))
-
-
-class DatasetGenerator(object):
-    def __init__(self, dataset_filename='data/test-set.txt',
-                 label_filename='data/label.txt'):
-        self.result_pattern = u'{}{}:{}\n'
-        self.queue = deque()
-        self.question_num = 1
-        self.answer_num = 1
-        self.dataset_filename = dataset_filename
-        self.label_filename = label_filename
-
-    def generate_paragraph(self, paragraph):
-        paragraph_lines = [self.result_pattern.format(
-            'Q', self.question_num,  paragraph.question.title)]
-        label_lines = [self.result_pattern.format('Q', self.question_num, 0)]
-        self.question_num += 1
-        for reply in paragraph.replies:
-            if reply.is_deleted == 1:
-                continue
-            if reply.is_question():
-                test_line = self.result_pattern.format('Q',  self.question_num,
-                                                       reply.content)
-                label_line = self.result_pattern.format('Q',
-                                                         self.question_num, 1)
-                label_lines.append(label_line)
-                self.question_num += 1
-            else:
-                test_line = self.result_pattern.format('A', self.answer_num,
-                                                       reply.content)
-                self.answer_num += 1
-            paragraph_lines.append(test_line)
-        return paragraph_lines, label_lines
-
-    def generate(self, num):
-        """generate dataset and label.
-
-        dataset format:
-            Q1:question1
-            A1:answer1
-            Q2:question2
-
-            Q3:question3
-            A2:answer2
-
-        label format: 0: new 1: follow-up
-            Q1:0
-            Q2:1
-            Q3:0
-
-        :param num: int, number of paragraphs
-        """
-        previous_category_id = None
-        with codecs.open(self.dataset_filename, encoding='utf-8', mode='wb') \
-                as dataset_file, codecs.open(self.label_filename,
-                                             encoding='utf-8', mode='wb') as \
-                label_file:
-            logger.info('start to generate dataset, limit %s', num)
-            for paragraph in Session.query(Paragraph).filter(
-                    Paragraph.is_deleted == 0).order_by(
-                    Paragraph.paragraph_id).limit(num):
-                # When current question has same category with the previous,
-                # put it into queue.
-                if paragraph.question.category_id == previous_category_id:
-                    logger.debug('same category id, put %s into queue',
-                                paragraph.paragraph_id)
-                    self.queue.append(paragraph)
-                    continue
-                paragraph_lines, label_lines = self.generate_paragraph(
-                    paragraph)
-                paragraph_lines.append('\n')
-                dataset_file.writelines(paragraph_lines)
-                label_file.writelines(label_lines)
-                previous_category_id = paragraph.question.category_id
-                # Output the head of queue when its category is different with
-                # the previous, otherwise put into queue again.
-                if len(self.queue) > 0:
-                    paragraph_in_queue = self.queue.popleft()
-                    if paragraph_in_queue.question.category_id == \
-                            previous_category_id:
-                        logger.debug('same category id again, put %s into '
-                                     'queue', paragraph_in_queue.paragraph_id)
-                        self.queue.append(paragraph_in_queue)
-                    else:
-                        logger.debug('dequeue')
-                        paragraph_lines, label_lines = self.\
-                            generate_paragraph(paragraph_in_queue)
-                        paragraph_lines.append('\n')
-                        dataset_file.writelines(paragraph_lines)
-                        label_file.writelines(label_lines)
-                        previous_category_id = paragraph_in_queue.question.\
-                            category_id
-            for paragraph_in_queue in self.queue:
-                paragraph_lines, label_lines = self.generate_paragraph(
-                    paragraph_in_queue)
-                paragraph_lines.append('\n')
-                dataset_file.writelines(paragraph_lines)
-                label_file.writelines(label_lines)
-            logger.info('finished generating data set')
 
 
 def generate_train_data(method_, text_filename, label_filename,
@@ -457,6 +356,7 @@ def analyze_feature(k, num, method_name):
     for feature_name in feature_names:
         method_.feature_names = feature_names[:]
         method_.feature_names.remove(feature_name)
+        logger.info('analyze feature %s', feature_name)
         result = k_fold_cross(k, num, method_name, feature_name)
         whole_result[feature_name] = result
     return whole_result
@@ -576,14 +476,13 @@ def k_fold_cross_dataset(k, num):
                 exist = False
                 break
     if not exist:
-        paragraphs = Session.query(Paragraph).filter(
-            Paragraph.is_deleted == 0).order_by(
-            Paragraph.paragraph_id).limit(num).all()
-        if len(paragraphs) != num:
+        filtered_paragraphs = Session.query(FilteredParagraph).limit(num).all()
+        if len(filtered_paragraphs) != num:
             raise RuntimeError()
+        random.shuffle(filtered_paragraphs)
         folds = [[] for i in range(0, k)]
         for i in range(0, num):
-            folds[i % k].append(paragraphs[i])
+            folds[i % k].append(filtered_paragraphs[i].paragraph)
         for i in range(0, k):
             test_text_file = file_names[i]['test_text']
             test_label_file = file_names[i]['test_label']
@@ -699,78 +598,3 @@ method_config = {
 
 def prepare():
     logging.config.dictConfig(LOGGING)
-
-
-def show_usage():
-    pass
-
-
-def main(argv):
-    try:
-        opts, args = getopt.getopt(argv, 'hgtea', ['help', 'generate', 'test',
-                                                   'evaluation',
-                                                   'adjust-threshold',
-                                                   'train-data'])
-    except getopt.GetoptError:
-        show_usage()
-        return
-    logging.config.dictConfig(LOGGING)
-    method_config = {
-        'essentials': {
-            'third_person_pronoun': 'data/third-person-pronoun.txt',
-            'demonstrative_pronoun': 'data/demonstrative-pronoun.txt',
-            'cue_word': 'data/cue-word.txt',
-            'stop_word': 'data/stop-word.txt'
-        },
-        'word_similarity_calculators': {
-            'word_embedding': {
-                'class': 'WordEmbeddingCalculator',
-                'vector_file_name': 'data/baike-50.vec.txt'
-            }
-        },
-        'sentence_similarity_calculator': {
-            'ssc': {
-                'cache': True,
-                'cache_file_name': 'data/sentence-score-cache',
-                'word_similarity_calculator': 'word_embedding'
-            }
-        },
-        'method': {
-            'de_boni': {
-                'class': 'DeBoni',
-                'sentence_similarity_calculator': 'ssc'
-            },
-            'fan_yang': {
-                'class': 'FanYang',
-                'sentence_similarity_calculator': 'ssc',
-                'train_data_file': 'data/train-data.csv'
-            }
-        }
-    }
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
-            show_usage()
-            return
-        elif opt in ('-g', '--generate'):
-            data_set_generator = DatasetGenerator()
-            data_set_generator.generate(0)
-        elif opt in ('-t', '--test'):
-            method.configure(method_config)
-            method_ = method.get_method(arg)
-            test(method_, 'data/q-q-0.89-q-a-0.89.txt')
-        elif opt in ('-e', '--evaluation'):
-            print evaluate('data/{}'.format('q-q-1.0-q-a-1.0.txt'))
-        elif opt in ('-a', '--adjust-threshold'):
-            method.configure(method_config)
-            adjust_threshold('data/pid-500-len-10-pcvs')
-        elif opt in '--train-data':
-            method.configure(method_config)
-            method_ = method.get_method('fan_yang')
-            generate_train_data(method_, 'data/test-set.txt', 'data/train-data.csv')
-
-
-if __name__ == '__main__':
-    method.configure(method_config)
-    fan_yang = method.get_method('fan_yang')
-    generate_train_data(fan_yang, 'data/train-set-data.txt', 'data/train-set-label.txt',
-               'data/train-data.txt')

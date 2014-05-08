@@ -32,7 +32,7 @@ LOGGING = {
         LOG_PROJECT_NAME: {
             'handlers': ['info'],
             'propagate': False,
-            'level': 'DEBUG'
+            'level': 'INFO'
         }
     },
     'root': {
