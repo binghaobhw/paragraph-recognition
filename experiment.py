@@ -2,7 +2,6 @@
 # coding: utf-8
 import codecs
 from collections import deque
-import getopt
 import hashlib
 import json
 import logging
@@ -11,7 +10,7 @@ import os
 import random
 import re
 import requests
-from data_access import Session, LtpResult, Paragraph, FilteredParagraph
+from data_access import Session, LtpResult, FilteredParagraph
 from log_config import LOG_PROJECT_NAME, LOGGING
 from method import AnalyzedSentence
 import method
@@ -101,7 +100,7 @@ def get_analyzed_result(question_text):
     return analyzed_result
 
 
-def test(method_, test_set_filename, result_filename):
+def test(method_, test_set_filename, result_filename, window_size):
     """Use method_ to judge questions in test_set_filename.
 
     :param method_: subclass of AbstractMethod
@@ -111,9 +110,8 @@ def test(method_, test_set_filename, result_filename):
     with codecs.open(test_set_filename, encoding='utf-8') as test_set, \
             codecs.open(result_filename, encoding='utf-8', mode='wb') as \
             result_file:
-        logger.info('test %s', test_set_filename)
-        context_window = 5
-        history_questions = deque(maxlen=context_window)
+        logger.info('test %s, window_size=%s', test_set_filename, window_size)
+        history_questions = deque(maxlen=window_size)
         previous_answer_text = None
         last_is_answer = False
         for line in test_set:
@@ -312,7 +310,7 @@ def adjust_len(path, output):
         f.write(json.dumps(result))
 
 
-def analyze_feature(k, num, method_name):
+def analyze_feature(k, num, method_name, window_size=3):
     """Analyze the effect without a feature one by one.
 
     Example:
@@ -357,12 +355,12 @@ def analyze_feature(k, num, method_name):
         method_.feature_names = feature_names[:]
         method_.feature_names.remove(feature_name)
         logger.info('analyze feature %s', feature_name)
-        result = k_fold_cross(k, num, method_name, feature_name)
+        result = k_fold_cross(k, num, method_name, feature_name, window_size)
         whole_result[feature_name] = result
     return whole_result
 
 
-def k_fold_cross(k, num, method_name, unique_word):
+def k_fold_cross(k, num, method_name, unique_word, window_size=3):
     """Do k-fold cross test with named method.
 
     Example:
@@ -413,7 +411,7 @@ def k_fold_cross(k, num, method_name, unique_word):
             method_.train_data_filename = train_data_file
             method_.classifier = None
         # test
-        test(method_, test_text_file, result_file)
+        test(method_, test_text_file, result_file, window_size)
         # evaluate
         result = evaluate(result_file, test_label_file)
         whole_result[i] = result
@@ -434,24 +432,24 @@ def k_fold_cross_dataset(k, num):
     Example:
         In: k_fold_cross_dataset(2, 10)
         Out:
-            {
-                1: {
+            [
+                {
                     'test_text': 'data/2-fold-cross-10-test-text-1.txt',
                     'test_label': 'data/2-fold-cross-10-test-label-1.txt',
                     'train_text': 'data/2-fold-cross-10-train-text-1.txt',
                     'train_label': 'data/2-fold-cross-10-train-label-1.txt',
                 },
-                2: {
+                {
                     'test_text': 'data/2-fold-cross-10-test-text-2.txt',
                     'test_label': 'data/2-fold-cross-10-test-label-2.txt',
                     'train_text': 'data/2-fold-cross-10-train-text-2.txt',
                     'train_label': 'data/2-fold-cross-10-train-label-2.txt',
                 }
-            }
+            ]
 
     :param k: int
     :param num: int
-    :return: dict :raise RuntimeError:
+    :return: list :raise RuntimeError:
     """
     prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=num) 
     file_pattern = '{prefix}-{{type}}-{{{{i}}}}.txt'.format(prefix=prefix)
@@ -459,19 +457,20 @@ def k_fold_cross_dataset(k, num):
     test_label_file_pattern = file_pattern.format(type='test-label')
     train_text_file_pattern = file_pattern.format(type='train-text')
     train_label_file_pattern = file_pattern.format(type='train-label')
-    file_names = {}
+    file_names = []
     for i in range(0, k):
         test_text_file = test_text_file_pattern.format(i=i)
         test_label_file = test_label_file_pattern.format(i=i)
         train_text_file = train_text_file_pattern.format(i=i)
         train_label_file = train_label_file_pattern.format(i=i)
-        file_names[i] = {'test_text': test_text_file,
-                         'test_label': test_label_file,
-                         'train_text': train_text_file,
-                         'train_label': train_label_file}
+        file_names.append({
+            'test_text': test_text_file,
+            'test_label': test_label_file,
+            'train_text': train_text_file,
+            'train_label': train_label_file})
     exist = True
     for i in file_names:
-        for file_ in file_names[i]:
+        for file_ in i.itervalues():
             if not os.path.isfile(file_):
                 exist = False
                 break

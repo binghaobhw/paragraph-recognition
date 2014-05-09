@@ -11,8 +11,12 @@
 <body>
 <div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 <div id="container1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+<div id="container2" style="min-width: 310px; height: 400px; margin: 0 auto">
+    <div id="container2-1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+    <div id="container2-2" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
+</div>
 <script type="text/javascript">
-    var path = 'data/3-method-comparison.json';
+    var path = 'data/500/window-size-3/3-method-comparison/3-method-comparison.json';
     $.getJSON(path, function(data) {
         var categories = ['new', 'follow'];
         var series = [];
@@ -65,7 +69,7 @@
             });
         });
     });
-    var path1 = 'data/analyze-feature.json';
+    var path1 = 'data/500/window-size-3/analyze-feature/analyze-feature.json';
     $.getJSON(path1, function(data) {
         var categories = [];
         var originNew = 0;
@@ -103,28 +107,28 @@
                     plotLines: [
                         {
                             color: '#7FB5EC',
-                            width: 1,
+                            width: 2,
                             value: originNew,
                             zIndex: 5,
                             dashStyle : 'shortdash',
                             label: {
-                                text: 'origin new',
+                                text: 'new',
                                 textAlign: 'right',
-                                x: -5,
-                                y: 0
+                                x: 25,
+                                y: -2
                             }
                         },
                         {
                             color: '#434348',
-                            width: 1,
+                            width: 2,
                             value: originFollow,
                             zIndex: 5,
                             dashStyle : 'shortdash',
                             label: {
-                                text: 'origin follow',
+                                text: 'follow',
                                 textAlign: 'right',
-                                x: -5,
-                                y: 0
+                                x: 25,
+                                y: -2
                             }
                         }]
                 },
@@ -143,6 +147,59 @@
                         dataLabels: {
                             crop: false,
                             overflow: 'none',
+                            enabled: true,
+                            format: '{y:.3f}'
+                        }
+                    }
+                },
+                series: series
+            });
+        });
+    });
+    var path2 = 'data/500/window-size/window-size.json';
+    $.getJSON(path2, function(data) {
+        var categories = ['new', 'follow'];
+        var series = [];
+        for (var windowSize in data) {
+            seriesData = {name: windowSize};
+            seriesData.data = [data[windowSize]['average']['new']['F1'],
+                               data[windowSize]['average']['follow']['F1']
+            ];
+            series.push(seriesData);
+        }
+        $(function () {
+            $('#container2').highcharts({
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: path2
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    endOnTick: false,
+                    min: 0.5,
+                    title: {
+                        text: 'rate'
+                    }
+                },
+                tooltip: {
+                    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                        '<td style="padding:0"><b>{point.y:.3f}</b></td></tr>',
+                    footerFormat: '</table>',
+                    shared: true,
+                    useHTML: true
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        dataLabels: {
+                            overflow: 'none',
+                            crop: false,
                             enabled: true,
                             format: '{y:.3f}'
                         }

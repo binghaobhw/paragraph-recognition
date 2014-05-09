@@ -8,6 +8,7 @@ import unittest
 from mock import Mock
 import experiment
 import method
+import random
 
 
 class TestDatasetGenerator(unittest.TestCase):
@@ -104,7 +105,16 @@ class TestKFoldCrossDataset(unittest.TestCase):
         result = experiment.k_fold_cross_dataset(2, 10)
         self.assertEqual(len(result), 2)
         for i in result:
-            for f in result[i].itervalues():
+            for f in i.itervalues():
+                os.remove(f)
+
+    def test_k_fold_cross_dataset_exist(self):
+        method.configure(experiment.method_config)
+        result = experiment.k_fold_cross_dataset(2, 10)
+        self.assertEqual(len(result), 2)
+        result = experiment.k_fold_cross_dataset(2, 10)
+        for i in result:
+            for f in i.itervalues():
                 os.remove(f)
 
 
