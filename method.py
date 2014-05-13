@@ -552,14 +552,14 @@ class SememeTreeBuilder(object):
 class WordEmbeddingCalculator(WordSimilarityCalculator):
     word_embedding_vectors = {}
 
-    def __init__(self, vector_file_name):
+    def __init__(self, vector_filename):
         super(WordEmbeddingCalculator, self).__init__()
-        self.vector_file_name = vector_file_name
+        self.vector_filename = vector_filename
 
     def build_word_embedding_vectors(self):
-        with codecs.open(self.vector_file_name, encoding='utf-8') as f:
+        with codecs.open(self.vector_filename, encoding='utf-8') as f:
             logger.info('start to build word vector from %s',
-                        self.vector_file_name)
+                        self.vector_filename)
             for line in f:
                 line = line.strip()
                 columns = line.split(' ')

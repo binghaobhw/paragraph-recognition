@@ -561,17 +561,25 @@ method_config = {
             'class': 'HowNetCalculator',
             'sememe_tree_file': 'data/whole.dat',
             'glossary_file': 'data/glossary.dat'
+        },
+        'word_embedding': {
+            'class': 'WordEmbeddingCalculator',
+            'vector_filename': 'data/baike-50.vec.txt'
         }
     },
     'sentence_similarity_calculator': {
         'ssc_with_how_net': {
             'word_similarity_calculator': 'how_net',
             'score_filename': 'data/how-net-sentence.score'
+        },
+        'ssc_with_word_embedding': {
+            'word_similarity_calculator': 'word_embedding',
+            'score_filename': 'data/word-embedding-sentence.score'
         }
     },
     'feature_manager': {
         'fm': {
-            'sentence_similarity_calculator': 'ssc_with_how_net'
+            'sentence_similarity_calculator': 'ssc_with_word_embedding'
         }
     },
     'method': {
