@@ -11,17 +11,15 @@
 <body>
 <div id="container" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 <div id="container1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
-<div id="container2" style="min-width: 310px; height: 400px; margin: 0 auto">
-    <div id="container2-1" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
-    <div id="container2-2" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
-</div>
+<div id="container2" style="min-width: 310px; height: 400px; margin: 0 auto"> </div>
+<div id="container3" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
 <script type="text/javascript">
-    var path = 'data/500/word-embedding/window-size-3/3-method-comparison/3-method-comparison.json';
-    $.getJSON(path, function(data) {
+    var wePath = 'data/500/word-embedding/window-size-3/3-method-comparison/3-method-comparison.json';
+    $.getJSON(wePath, function(data) {
         var categories = ['new', 'follow'];
         var series = [];
         for (var methodName in data) {
-            seriesData = {name: methodName};
+            var seriesData = {name: methodName};
             seriesData.data = [data[methodName]['average']['new']['F1'],
                                data[methodName]['average']['follow']['F1']
             ];
@@ -33,7 +31,7 @@
                     type: 'column'
                 },
                 title: {
-                    text: path
+                    text: wePath
                 },
                 xAxis: {
                     categories: categories
@@ -207,6 +205,69 @@
                 },
                 series: series
             });
+        });
+    });
+    var wePath3 = 'data/500/word-embedding/window-size-3/3-method-comparison/3-method-comparison.json';
+    var hnPath3 = 'data/500/hownet/window-size-3/3-method-comparison/3-method-comparison.json';
+    var categories = [];
+    var series = [];
+    var we = {name: 'word-embedding', data: []};
+    $.getJSON(wePath3, function(data) {
+        for (var methodName in data) {
+            categories.push(methodName + '-new');
+            we.data.push(data[methodName]['average']['new']['F1']);
+            categories.push(methodName + '-follow');
+            we.data.push(data[methodName]['average']['follow']['F1']);
+        }
+    });
+    series.push(we);
+    var hn = {name: 'hownet', data: []};
+    $.getJSON(hnPath3, function(data) {
+        for (var methodName in data) {
+            hn.data.push(data[methodName]['average']['new']['F1']);
+            hn.data.push(data[methodName]['average']['follow']['F1']);
+        }
+    });
+    series.push(hn);
+    $(function () {
+        $('#container3').highcharts({
+            chart: {
+                type: 'column'
+            },
+            title: {
+                text: wePath
+            },
+            xAxis: {
+                categories: categories
+            },
+            yAxis: {
+                endOnTick: false,
+                min: 0,
+                title: {
+                    text: 'rate'
+                }
+            },
+            tooltip: {
+                headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                        '<td style="padding:0"><b>{point.y:.3f}</b></td></tr>',
+                footerFormat: '</table>',
+                shared: true,
+                useHTML: true
+            },
+            plotOptions: {
+                column: {
+                    pointPadding: 0.2,
+                    borderWidth: 0,
+                    dataLabels: {
+                        overflow: 'none',
+                        crop: false,
+                        enabled: true,
+                        format: '{y:.3f}'
+                    }
+                }
+            },
+            series: series
         });
     });
 
