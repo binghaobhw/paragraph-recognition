@@ -376,6 +376,8 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         score = 0.0
+        if not map_a and not map_b:
+            return 1.0
         if not map_a or not map_b:
             return score
         scores = []

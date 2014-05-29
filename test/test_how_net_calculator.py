@@ -50,8 +50,8 @@ class TestHowNetCalculator(TestCase):
         self.assertGreater(score, 0.0)
 
     def test_calculate(self):
-        score = self.how_net_calculator.calculate(u'吃', u'睡')
-        self.assertGreater(score, 0.0)
+        score = self.how_net_calculator.calculate(u'男人', u'父亲')
+        self.assertEqual(score, 1.0)
 
     def test_calculate_concept_similarity(self):
         concept_a = WordConcept(u'阿法尔语',
