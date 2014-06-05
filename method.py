@@ -339,8 +339,11 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         score = 0.0
+        if not list_a and not list_b:
+            logger.debug('both params are None, score: 1.0')
+            return 1.0
         if not list_a or not list_b:
-            logger.debug('one or two of params is None, score: 0.0')
+            logger.debug('one param is None, score: 0.0')
             return score
         sememe_score = {}
         pop_sememes = {}
@@ -354,7 +357,7 @@ class HowNetCalculator(WordSimilarityCalculator):
             key = None
             for sememe_tuple, score in sememe_score.items():
                 if sememe_tuple[0] in pop_sememes or \
-                        sememe_tuple[1] in pop_sememes:
+                                sememe_tuple[1] in pop_sememes:
                     sememe_score.pop(sememe_tuple)
                     continue
                 if max_score < score:
