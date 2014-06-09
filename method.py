@@ -60,11 +60,13 @@ class AnalyzedSentence(object):
 
     def has_noun(self):
         for w in self.words_with_tag('pos', 'n'):
+            logger.info('%s', w['cont'])
             return True
         return False
 
     def has_proper_noun(self):
         for w in self.named_entities():
+            logger.info('%s', w['cont'])
             return True
         return False
 
@@ -75,6 +77,7 @@ class AnalyzedSentence(object):
                     pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
                 index = self.index(pronoun)
                 if index[0] == 0 and index[1] <= len_threshold:
+                    logger.info('%s', pronoun['cont'])
                     return True
                 else:
                     return False
@@ -101,6 +104,7 @@ class AnalyzedSentence(object):
     def has_cue_word(self):
         for word in self.words():
             if word['cont'] in CUE_WORD_DICT:
+                logger.info('%s', word['cont'])
                 return True
         return False
 
@@ -110,6 +114,7 @@ class AnalyzedSentence(object):
 
     def has_verb(self):
         for w in self.words_with_tag('pos', 'v'):
+            logger.info('%s', w['cont'])
             return True
         return False
 
@@ -354,6 +359,7 @@ class HowNetCalculator(WordSimilarityCalculator):
                 sememe_score[(sememe_a, sememe_b)] = score
         while len(sememe_score) > 0:
             max_score = -1.0
+
             key = None
             for sememe_tuple, score in sememe_score.items():
                 if sememe_tuple[0] in pop_sememes or \
@@ -807,6 +813,7 @@ class FeatureManager(object):
         for history_question in history_questions:
             for w in history_question.named_entities():
                 if w['cont'] in entities:
+                    logger.info('%s', w['cont'])
                     return True
         if not previous_answer:
             return False

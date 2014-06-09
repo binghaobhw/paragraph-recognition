@@ -235,7 +235,7 @@
                 type: 'column'
             },
             title: {
-                text: wePath
+                text: wePath3 +' ' + hnPath3
             },
             xAxis: {
                 categories: categories
@@ -271,85 +271,6 @@
         });
     });
 
-</script>
-<script type='text/javascript'>
-    $(document).ready(function() {
-        var followOptions = {
-            title: {
-                text: 'Follow'
-            },
-            chart: {
-                type: 'line'
-            },
-            xAxis: {
-                title: {
-                    text: 'threshold'
-                }
-            },
-            yAxis: {
-                title: {
-                    text: 'rate'
-                }
-            },
-            series: []
-        };
-        var newOptions = {
-            title: {
-                text: 'New'
-            },
-            chart: {
-                type: 'line'
-            },
-            xAxis: {
-                title: {
-                    text: 'threshold'
-                }
-            },
-            yAxis: {
-                title: {
-                    text: 'rate'
-                }
-            },
-            series: []
-        };
-        $('#file').live('change', function() {
-            var files = $('#file').prop("files");
-            $.map(files, function(val) {
-                var path = 'file:///' + $('#path').val() + '/' + val.name;
-                var divFollowId = val.name + '.f';
-                var divNewId = val.name + '.n';
-                var divHeader = $('<div>' + path + '</div>');
-                var divFollow = $('<div id="' + divFollowId + '", sty' + 'le="width:50%; float: left">');
-                var divNew= $('<div id="' + divNewId + '", style="width:50%; float: left">');
-                $("#diagrams").append(divHeader, divFollow, divNew);
-
-                $.getJSON(path, function(data) {
-                    var pFollow = [];
-                    var rFollow = [];
-                    var f1Follow = [];
-                    var pNew = [];
-                    var rNew = [];
-                    var f1New = [];
-                    for(var i = 0; i < data.length; i++) {
-                        pFollow.push([data[i].threshold, data[i].result.F.P]);
-                        rFollow.push([data[i].threshold, data[i].result.F.R]);
-                        f1Follow.push([data[i].threshold, data[i].result.F.F1]);
-                        pNew.push([data[i].threshold, data[i].result.N.P]);
-                        rNew.push([data[i].threshold, data[i].result.N.R]);
-                        f1New.push([data[i].threshold, data[i].result.N.F1]);
-                    }
-                    followOptions.series = [];
-                    followOptions.series.push({name: 'P', data: pFollow},
-                            {name: 'R', data: rFollow}, {name: 'F1', data: f1Follow});
-                    newOptions.series = [];
-                    newOptions.series.push({name: 'P', data: pNew},
-                            {name: 'R', data: rNew}, {name: 'F1', data: f1New});
-                    divFollow.highcharts(followOptions);
-                    divNew.highcharts(newOptions);
-                });
-            });
-        });
-    });
 </script>
 
 </body>

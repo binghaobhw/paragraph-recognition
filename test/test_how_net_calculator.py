@@ -50,7 +50,7 @@ class TestHowNetCalculator(TestCase):
         self.assertGreater(score, 0.0)
 
     def test_calculate(self):
-        score = self.how_net_calculator.calculate(u'男人', u'父亲')
+        score = self.how_net_calculator.calculate(u'红色', u'颜色')
         self.assertEqual(score, 1.0)
 
     def test_calculate_concept_similarity(self):
