@@ -387,18 +387,18 @@ class HowNetCalculator(WordSimilarityCalculator):
         :param map_b: dict(unicode, unicode)
         :return: float
         """
-        score = 0.0
         if not map_a and not map_b:
             return 1.0
         if not map_a or not map_b:
-            return score
+            return self.delta
         scores = []
         for key in map_a:
             if key in map_b:
                 scores.append(self.sememe_similarity(map_a[key], map_b[key]))
-        if scores:
-            score = sum(scores) / len(scores)
-        return score
+        score_num = max(len(map_a), len(map_b))
+        while len(scores) < score_num:
+            scores.append(self.delta)
+        return sum(scores) / len(scores)
 
     def relation_sememe_similarity(self, map_a, map_b):
         """Return the relation-sememe similarity of two concepts.
