@@ -350,21 +350,21 @@ class HowNetCalculator(WordSimilarityCalculator):
         if not list_a or not list_b:
             logger.debug('one param is None, score: 0.0')
             return score
-        sememe_score = {}
+        sememe_scores = {}
         pop_sememes = {}
         scores = []
         for sememe_a in list_a:
             for sememe_b in list_b:
                 score = self.sememe_similarity(sememe_a, sememe_b)
-                sememe_score[(sememe_a, sememe_b)] = score
-        while len(sememe_score) > 0:
+                sememe_scores[(sememe_a, sememe_b)] = score
+        while len(sememe_scores) > 0:
             max_score = -1.0
 
             key = None
-            for sememe_tuple, score in sememe_score.items():
+            for sememe_tuple, score in sememe_scores.items():
                 if sememe_tuple[0] in pop_sememes or \
                                 sememe_tuple[1] in pop_sememes:
-                    sememe_score.pop(sememe_tuple)
+                    sememe_scores.pop(sememe_tuple)
                     continue
                 if max_score < score:
                     max_score = score
@@ -373,6 +373,9 @@ class HowNetCalculator(WordSimilarityCalculator):
                 pop_sememes[key[0]] = 1
                 pop_sememes[key[1]] = 1
                 scores.append(max_score)
+        score_num = max(len(list_a), len(list_b))
+        while len(scores) < score_num:
+            scores.append(self.delta)
         score = sum(scores) / len(scores)
         logger.debug('[%s, %s] score: %s', list_a, list_b, score)
         return score
