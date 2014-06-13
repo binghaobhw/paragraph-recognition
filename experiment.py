@@ -246,7 +246,7 @@ def generate_train_data(method_, text_filename, label_filename,
             codecs.open(label_filename, encoding='utf-8') as label_file, \
             codecs.open(train_data_filename, encoding='utf-8', mode='wb') as \
             train_data_file:
-        context_window = 5
+        context_window = 3
         history_questions = deque(maxlen=context_window)
         previous_answer_text = None
         last_is_answer = False
@@ -263,7 +263,8 @@ def generate_train_data(method_, text_filename, label_filename,
                 last_is_answer = True
                 continue
             label = label_file.next().strip().split(':', 1)[1]
-            question_text = line.split(':', 1)[1]
+            num, question_text = line.split(':', 1)
+            logger.debug('%s', num)
             question = get_analyzed_result(question_text)
             previous_answer = get_analyzed_result(previous_answer_text) if \
                 last_is_answer else None
