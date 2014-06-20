@@ -13,16 +13,15 @@ from sklearn import tree
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
 
-ESSENTIALS_DICT = dict.fromkeys(['third_person_pronoun',
-                                 'demonstrative_pronoun',
-                                 'cue_word',
-                                 'stop_word'], {})
+THIRD_PERSON_PRONOUN_DICT = {}
+DEMONSTRATIVE_PRONOUN_DICT = {}
+CUE_WORD_DICT = {}
+STOP_WORD_DICT = {}
 
-THIRD_PERSON_PRONOUN_DICT = ESSENTIALS_DICT['third_person_pronoun']
-DEMONSTRATIVE_PRONOUN_DICT = ESSENTIALS_DICT['demonstrative_pronoun']
-CUE_WORD_DICT = ESSENTIALS_DICT['cue_word']
-STOP_WORD_DICT = ESSENTIALS_DICT['stop_word']
-
+ESSENTIALS_DICT = {'third_person_pronoun': THIRD_PERSON_PRONOUN_DICT,
+                   'demonstrative_pronoun': DEMONSTRATIVE_PRONOUN_DICT,
+                   'cue_word': CUE_WORD_DICT,
+                   'stop_word': STOP_WORD_DICT}
 
 word_similarity_calculators = {}
 sentence_similarity_calculators = {}

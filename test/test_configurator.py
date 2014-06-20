@@ -14,13 +14,12 @@ class TestConfigurator(TestCase):
             'cue_word': 'data/cue-word.txt',
             'stop_word': 'data/stop-word.txt'
         }
-        for i in essentials.itervalues():
-            with codecs.open(i, encoding='utf-8', mode='wb') as f:
-                f.write(i)
         method.Configurator({'essentials': essentials}).configure_essentials()
-        for k, v in essentials.iteritems():
-            self.assertEqual(method.ESSENTIALS_DICT[k][v], 1)
-            os.remove(v)
+        self.assertTrue(u'他' in method.ESSENTIALS_DICT['third_person_pronoun'])
+        self.assertTrue(u'这' in method.ESSENTIALS_DICT['demonstrative_pronoun'])
+        self.assertTrue(u'其他' in method.ESSENTIALS_DICT['cue_word'])
+        self.assertTrue(u"'" in method.ESSENTIALS_DICT['stop_word'])
+        self.assertFalse(u"'" in method.ESSENTIALS_DICT['third_person_pronoun'])
 
     def test_configure_word_similarity_calculator(self):
         word_similarity_calculators = {

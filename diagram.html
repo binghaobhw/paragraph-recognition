@@ -69,7 +69,8 @@
     });
     var path1 = 'data/500/word-embedding/window-size-3/analyze-feature/analyze-feature.json';
     $.getJSON(path1, function(data) {
-        var categories = [];
+        // var categories = [];
+        var categories = ['相同命名实体', '名词', '代词', '句法结构', '语义相似度', '词重现率', '线索词', '相邻问题长度差'];
         var originNew = 0;
         var originFollow = 0;
         var dataNew = {name: 'new', data: []};
@@ -82,7 +83,7 @@
                 originFollow = dataFollow.data.pop();
                 continue;
             }
-            categories.push(featureName)
+            // categories.push(featureName)
         }
         var series = [dataNew, dataFollow];
         $(function () {
