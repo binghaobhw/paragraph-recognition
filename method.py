@@ -59,13 +59,13 @@ class AnalyzedSentence(object):
 
     def has_noun(self):
         for w in self.words_with_tag('pos', 'n'):
-            logger.info('%s', w['cont'])
+            logger.debug('%s', w['cont'])
             return True
         return False
 
     def has_proper_noun(self):
         for w in self.named_entities():
-            logger.info('%s', w['cont'])
+            logger.debug('%s', w['cont'])
             return True
         return False
 
@@ -76,7 +76,7 @@ class AnalyzedSentence(object):
                     pronoun['cont'] in DEMONSTRATIVE_PRONOUN_DICT:
                 index = self.index(pronoun)
                 if index[0] == 0 and index[1] <= len_threshold:
-                    logger.info('%s', pronoun['cont'])
+                    logger.debug('%s', pronoun['cont'])
                     return True
                 else:
                     return False
@@ -103,7 +103,7 @@ class AnalyzedSentence(object):
     def has_cue_word(self):
         for word in self.words():
             if word['cont'] in CUE_WORD_DICT:
-                logger.info('%s', word['cont'])
+                logger.debug('%s', word['cont'])
                 return True
         return False
 
@@ -113,7 +113,7 @@ class AnalyzedSentence(object):
 
     def has_verb(self):
         for w in self.words_with_tag('pos', 'v'):
-            logger.info('%s', w['cont'])
+            logger.debug('%s', w['cont'])
             return True
         return False
 
@@ -213,7 +213,7 @@ class SentenceSimilarityCalculator(object):
             score = self.calculate(a, sentence)
             if max_sentence_score < score:
                 max_sentence_score = score
-        logger.info('max sentence score: %s', max_sentence_score)
+        logger.debug('max sentence similarity: %s', max_sentence_score)
         return max_sentence_score
 
     def do_calculate(self, text_a, text_b):
@@ -232,7 +232,8 @@ class SentenceSimilarityCalculator(object):
             score += max_word_score
         if text_a_len != 0:
             score /= text_a_len
-        logger.debug('score: %s', score)
+        logger.debug('sentence similarity: %s, text_a: %s, text_b: %s',
+                     score, text_a.json, text_b.json)
         return score
 
 
@@ -291,7 +292,7 @@ class HowNetCalculator(WordSimilarityCalculator):
                     score = self.calculate_concept_similarity(concept_a, concept_b)
                     if max_score < score:
                         max_score = score
-        logger.debug('[%s, %s] score: %s', word_a, word_b, max_score)
+        logger.debug('[%s, %s] hownet similarity: %s', word_a, word_b, max_score)
         return max_score
 
     def calculate_concept_similarity(self, concept_a, concept_b):
@@ -320,8 +321,8 @@ class HowNetCalculator(WordSimilarityCalculator):
             product.append(product[2] * sim[3])
             score = reduce(lambda x, y: x+y, map(lambda (x, y): x*y,
                                                  zip(product, self.beta)))
-        logger.debug('[%s, %s] score: %s', concept_a.word, concept_b.word,
-                     score)
+        logger.debug('[%s, %s] concept similarity: %s', concept_a.word,
+                     concept_b.word, score)
         return score
 
     def first_independent_sememe_similarity(self, sememe_a, sememe_b):
@@ -332,7 +333,6 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         score = self.sememe_similarity(sememe_a, sememe_b)
-        logger.debug('[%s, %s] score: %s', sememe_a, sememe_b, score)
         return score
 
     def other_independent_sememe_similarity(self, list_a, list_b):
@@ -344,10 +344,8 @@ class HowNetCalculator(WordSimilarityCalculator):
         """
         score = 0.0
         if not list_a and not list_b:
-            logger.debug('both params are None, score: 1.0')
             return 1.0
         if not list_a or not list_b:
-            logger.debug('one param is None, score: 0.0')
             return score
         sememe_scores = {}
         pop_sememes = {}
@@ -376,7 +374,6 @@ class HowNetCalculator(WordSimilarityCalculator):
         while len(scores) < score_num:
             scores.append(self.delta)
         score = sum(scores) / len(scores)
-        logger.debug('[%s, %s] score: %s', list_a, list_b, score)
         return score
 
     def key_value_similarity(self, map_a, map_b):
@@ -407,7 +404,6 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         score = self.key_value_similarity(map_a, map_b)
-        logger.debug('[%s, %s] score: %s', map_a, map_b, score)
         return score
 
     def symbol_sememe_similarity(self, map_a, map_b):
@@ -418,7 +414,6 @@ class HowNetCalculator(WordSimilarityCalculator):
         :return: float
         """
         score = self.key_value_similarity(map_a, map_b)
-        logger.debug('[%s, %s] score: %s', map_a, map_b, score)
         return score
 
     def sememe_similarity(self, sememe_a, sememe_b):
@@ -438,7 +433,6 @@ class HowNetCalculator(WordSimilarityCalculator):
             return self.gamma
         distance = self.sememe_distance(sememe_a, sememe_b)
         score = self.alpha / (self.alpha+distance) if distance >= 0 else 0.0
-        logger.debug('[%s, %s] score: %s', sememe_a, sememe_b, score)
         return score
 
     def sememe_distance(self, sememe_a, sememe_b):
@@ -590,7 +584,8 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
             raw_score = vector_cos(self.word_embedding_vectors[word_a],
                                    self.word_embedding_vectors[word_b])
             score = (raw_score + 1) / 2
-        logger.debug('[%s, %s] score: %s', word_a, word_b, score)
+        logger.debug('[%s, %s] word embedding similarity: %s',
+                     word_a, word_b, score)
         return score
 
 
@@ -705,7 +700,7 @@ class FanYang(AbstractMethod):
                 self.train()
         predictions = self.classifier.predict([features])
         follow_up = bool(predictions[0])
-        logger.debug('question: %s, follow_up: %s', question.md5, follow_up)
+        logger.info('follow_up: %s, question: %s', follow_up, question.md5)
         return follow_up
 
     def features(self, question, history_questions, previous_answer):
@@ -815,7 +810,7 @@ class FeatureManager(object):
         for history_question in history_questions:
             for w in history_question.named_entities():
                 if w['cont'] in entities:
-                    logger.info('%s', w['cont'])
+                    logger.debug('%s', w['cont'])
                     return True
         if not previous_answer:
             return False
