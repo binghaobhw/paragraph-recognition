@@ -242,6 +242,13 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
 
 def generate_train_data(method_, text_filename, label_filename,
                         train_data_filename):
+    """
+
+    :param method_: subclass of AbstractMethod
+    :param text_filename: str
+    :param label_filename: str
+    :param train_data_filename: str
+    """
     with codecs.open(text_filename, encoding='utf-8') as text_file, \
             codecs.open(label_filename, encoding='utf-8') as label_file, \
             codecs.open(train_data_filename, encoding='utf-8', mode='wb') as \
