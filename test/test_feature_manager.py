@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 from unittest import TestCase
+
 from mock import Mock
+
 from method import build_context, FeatureManager, SentenceSimilarityCalculator, \
     AnalyzedSentence
 
 
 class TestFeatureManager(TestCase):
     def test_build_context(self):
-        context = build_context(None, None, None)
+        context = build_context(None, None)
         self.assertDictEqual(context, {'question': None,
                                        'history_questions': None,
                                        'previous_answer': None})
@@ -18,8 +20,7 @@ class TestFeatureManager(TestCase):
         feature_manager = FeatureManager(None)
         mock_question = Mock()
         mock_question.has_pronoun.return_value = False
-        features = feature_manager.features(mock_question, None, None,
-                                            feature_names)
+        features = feature_manager.features(mock_question, feature_names)
         mock_question.has_pronoun.assert_called()
         self.assertTrue(len(features) == 1)
         self.assertFalse(features[0])

@@ -1,7 +1,6 @@
 # coding:utf-8
 import time
 from Queue import Queue
-import requests
 import re
 from threading import (Thread,
                        Event)
@@ -9,10 +8,13 @@ import logging
 import logging.config
 from urllib import quote
 from os.path import isfile
-from bs4 import BeautifulSoup
 import random
 import getopt
 import sys
+
+import requests
+from bs4 import BeautifulSoup
+
 from data_access import (Session,
                          Question,
                          Paragraph,
@@ -21,6 +23,7 @@ from unicode_csv import (to_unicode,
                          read_csv,
                          write_csv)
 from log_config import LOGGING, LOG_PROJECT_NAME
+
 
 logger = logging.getLogger(LOG_PROJECT_NAME + '.extractor')
 
@@ -195,9 +198,9 @@ class CategoryPageExtractor(Extractor):
                 if answer_num == 0:
                     continue
                 title_container_div = answer_num_div.find_previous_sibling(
-                    'div', {'class': 'title-container'})
+                    'div', {'class': 'content-container'})
                 question_anchor = title_container_div.find(
-                    'a', {'class': 'question-title'})
+                    'a', {'class': 'question-content'})
                 question_url = to_unicode(question_anchor['href'])
                 logger.info("start to put '%s' into queue(%d), "
                             "%d answer", question_url, self.queue
@@ -248,7 +251,7 @@ class SearchPageExtractor(Extractor):
 
 def get_title(page):
     title = None
-    title_span = page.find('span', 'ask-title')
+    title_span = page.find('span', 'ask-content')
 
     if title_span is not None:
         title = title_span.string
@@ -266,7 +269,7 @@ def is_visited(question_id):
             visited = (Session.query(Question).filter_by(
                 question_id=question_id).count() != 0)
         except:
-            logger.error('fail to query question_id %s', question_id,
+            logger.error('fail to query id %s', question_id,
                          exc_info=True)
     return visited
 
@@ -308,7 +311,7 @@ class ParagraphExtractor(Extractor):
         # save question
         anchor = page.find('a', {'alog-alias': 'qb-class-info'})
         if anchor is None:
-            if page.find('title', text=u'百度--您的访问出错了') is None:
+            if page.find('content', text=u'百度--您的访问出错了') is None:
                 logger.error('invalid question page %s', target)
             else:
                 logger.error('auth page, set exit signal')
@@ -318,7 +321,7 @@ class ParagraphExtractor(Extractor):
         category_id = re.findall(r'/(\d+)', category_url)[0]
         title = get_title(page)
         if title is None:
-            logger.error('fail to get title in %s', target)
+            logger.error('fail to get content in %s', target)
             return
         question = Question(question_id, category_id, title)
         Session.add(question)

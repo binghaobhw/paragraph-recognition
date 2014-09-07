@@ -8,7 +8,9 @@ import os
 import sys
 import cPickle
 import re
+
 from sklearn import tree
+
 
 logger = logging.getLogger('paragraph-recognition.paragraph_recognition')
 logger.addHandler(logging.NullHandler())
@@ -590,38 +592,49 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
 
 
 class AbstractMethod(object):
-    def __init__(self, feature_manager):
-        self.feature_manager = feature_manager
 
-    def is_follow_up(self, question, history_questions, previous_answer):
+    def __init__(self, feature_manager, feature_names):
+        self.feature_manager = feature_manager
+        self.feature_names = feature_names
+
+    def is_follow_up(self, sentence, history_sentences):
         """Predict whether the question is follow-up.
 
-        :param question: AnalyzedSentence
-        :param history_questions: list[AnalyzedSentence]
+        :param sentence: AnalyzedSentence
+        :param history_sentences: list[AnalyzedSentence]
         :param previous_answer: AnalyzedSentence
         :return: bool
         """
         pass
+
+    def features(self, sentence, history_sentences):
+        return self.feature_manager.features(sentence, history_sentences, self.feature_names)
 
 
 class DeBoni(AbstractMethod):
 
     def __init__(self, feature_manager, q_q_threshold,
                  q_a_threshold):
-        super(DeBoni, self).__init__(feature_manager)
+        feature_names = [
+            'pronoun',
+            'cue_word',
+            'verb',
+            'largest_question_similarity',
+            'qa_similarity'
+        ]
+        super(DeBoni, self).__init__(feature_manager, feature_names)
         self.q_q_threshold = q_q_threshold
         self.q_a_threshold = q_a_threshold
 
-    def is_follow_up(self, question, history_questions, previous_answer):
+    def is_follow_up(self, sentence, history_sentences):
         follow_up = False
-        context = build_context(question, history_questions, previous_answer)
-        if self.feature_manager.has_pronoun(context) or \
-                self.feature_manager.has_cue_word(context) or \
-                not self.feature_manager.has_verb(context) or \
-                self.feature_manager.largest_question_similarity(context) > \
-                self.q_q_threshold or \
-                self.feature_manager.qa_similarity(context) > \
-                self.q_a_threshold:
+        features = self.features(sentence, history_sentences, self.feature_names)
+        if features and len(features) == 5 and (
+                features[0] or
+                features[1] or
+                not features[2] or
+                features[3] > self.q_q_threshold or
+                features[4] > self.q_a_threshold):
             follow_up = True
         return follow_up
 
@@ -690,8 +703,8 @@ class FanYang(AbstractMethod):
             fit(features, labels)
         logger.info('finished training')
 
-    def is_follow_up(self, question, history_questions, previous_answer):
-        features = self.features(question, history_questions, previous_answer)
+    def is_follow_up(self, sentence, history_sentences):
+        features = self.features(sentence, history_sentences)
         if not self.classifier:
             if self.classifier_filename and os.path.isfile(
                     self.classifier_filename):
@@ -700,12 +713,8 @@ class FanYang(AbstractMethod):
                 self.train()
         predictions = self.classifier.predict([features])
         follow_up = bool(predictions[0])
-        logger.info('follow_up: %s, question: %s', follow_up, question.md5)
+        logger.info('follow_up: %s, question: %s', follow_up, sentence.md5)
         return follow_up
-
-    def features(self, question, history_questions, previous_answer):
-        return self.feature_manager.features(
-            question, history_questions, previous_answer, self.feature_names)
 
 
 class ImprovedMethod(FanYang):
@@ -720,17 +729,15 @@ class ImprovedMethod(FanYang):
         'largest_similarity']
 
 
-def build_context(question, history_questions, previous_answer):
-    """Return a question context including question, history and answer.
+def build_context(sentence, history_sentences):
+    """Return a question context including question, history.
 
-    :param question: AnalyzedSentence
-    :param history_questions: list[AnalyzedSentence]
-    :param previous_answer: AnalyzedSentence
+    :param sentence: AnalyzedSentence
+    :param history_sentences: list[AnalyzedSentence]
     :return: dict
     """
-    context = {'question': question,
-               'history_questions': history_questions,
-               'previous_answer': previous_answer}
+    context = {'sentence': sentence,
+               'history_sentences': history_sentences}
     return context
 
 
@@ -753,18 +760,16 @@ class FeatureManager(object):
             'adjacent_question_length_difference':
                 self.adjacent_question_length_difference}
 
-    def features(self, question, history_questiosn, previous_answer,
-                 feature_names):
-        """Return named features of question.
+    def features(self, sentence, history_sentences, feature_names):
+        """Return named features of sentence.
 
-        :param question: AnalyzedSentence
-        :param history_questiosn: list[AnalyzedSentence]
-        :param previous_answer: AnalyzedSentence
+        :param sentence: AnalyzedSentence
+        :param history_sentences: List[AnalyzedSentence]
         :param feature_names: list[unicode]
         :return: list[bool | float]
         """
         features = []
-        context = build_context(question, history_questiosn, previous_answer)
+        context = build_context(sentence, history_sentences)
         for feature_name in feature_names:
             feature_method = self.feature_name_method_map[feature_name]
             feature = feature_method(context)

@@ -9,11 +9,14 @@ import logging.config
 import os
 import random
 import re
+
 import requests
-from data_access import Session, LtpResult, FilteredParagraph
+
+from data_access import Session, LtpResult, FilteredParagraph, Paragraph
 from log_config import LOG_PROJECT_NAME, LOGGING
 from method import AnalyzedSentence
 import method
+
 
 logger = logging.getLogger(LOG_PROJECT_NAME + '.experiment')
 logger.addHandler(logging.NullHandler())
@@ -128,8 +131,7 @@ def test(method_, test_set_filename, result_filename, window_size):
                 if last_is_answer else None
             last_is_answer = False
             logger.info('test %s', prefix)
-            follow_up = method_.is_follow_up(question, history_questions,
-                                             previous_answer)
+            follow_up = method_.is_follow_up(question, history_questions)
             result_file.write('{}:{:d}\n'.format(prefix, follow_up))
             history_questions.append(question)
 
@@ -275,8 +277,7 @@ def generate_train_data(method_, text_filename, label_filename,
             question = get_analyzed_result(question_text)
             previous_answer = get_analyzed_result(previous_answer_text) if \
                 last_is_answer else None
-            features = method_.features(question, history_questions,
-                                        previous_answer)
+            features = method_.features(question, )
             train_data_line = to_literal(features + [label])
             train_data_line = ','.join(train_data_line)
             train_data_file.write('{}\n'.format(train_data_line))
@@ -442,16 +443,16 @@ def k_fold_cross_dataset(k, num):
         Out:
             [
                 {
+                    'test_text': 'data/2-fold-cross-10-test-text-0.txt',
+                    'test_label': 'data/2-fold-cross-10-test-label-0.txt',
+                    'train_text': 'data/2-fold-cross-10-train-text-0.txt',
+                    'train_label': 'data/2-fold-cross-10-train-label-0.txt',
+                },
+                {
                     'test_text': 'data/2-fold-cross-10-test-text-1.txt',
                     'test_label': 'data/2-fold-cross-10-test-label-1.txt',
                     'train_text': 'data/2-fold-cross-10-train-text-1.txt',
                     'train_label': 'data/2-fold-cross-10-train-label-1.txt',
-                },
-                {
-                    'test_text': 'data/2-fold-cross-10-test-text-2.txt',
-                    'test_label': 'data/2-fold-cross-10-test-label-2.txt',
-                    'train_text': 'data/2-fold-cross-10-train-text-2.txt',
-                    'train_label': 'data/2-fold-cross-10-train-label-2.txt',
                 }
             ]
 
@@ -501,13 +502,13 @@ def k_fold_cross_dataset(k, num):
                 if j != i:
                     train_set.extend(folds[j])
             # generate test set
-            generate_dataset(test_set, test_text_file, test_label_file)
+            generate_text_label(test_set, test_text_file, test_label_file)
             # generate train set
-            generate_dataset(train_set, train_text_file, train_label_file)
+            generate_text_label(train_set, train_text_file, train_label_file)
     return file_names            
 
 
-def generate_dataset(paragraphs, data_file, label_file):
+def generate_text_label(paragraphs, data_file, label_file):
     """Generate dataset and label.
 
     dataset format:
@@ -613,3 +614,29 @@ method_config = {
 
 def prepare():
     logging.config.dictConfig(LOGGING)
+
+
+class KCrossDataProvider(object):
+    def generate(self, k):
+        pass
+
+
+class DbKCrossDataProvider(KCrossDataProvider):
+
+    def __init__(self, num):
+        self.num = num
+
+    def generate(self, k):
+        file_pattern = 'data/{k}-fold-cross-data-{{i}}.txt'.format(k=k)
+        paragraphs = Session.query(Paragraph).limit(self.num).all()
+        if len(paragraphs) != self.num:
+            raise RuntimeError()
+        random.shuffle(paragraphs)
+        folds = [[] for i in range(0, k)]
+        for i in range(0, self.num):
+            folds[i % k].append(paragraphs[i])
+        for i in range(0, k):
+            filename = file_pattern.format(i=i)
+            with codecs.open(filename, encoding='utf-8', mode='wb') as f:
+                pass
+
