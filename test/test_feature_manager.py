@@ -10,7 +10,7 @@ from method import build_context, FeatureManager, SentenceSimilarityCalculator, 
 
 class TestFeatureManager(TestCase):
     def test_build_context(self):
-        context = build_context(None, None)
+        context = build_context(None, None, None)
         self.assertDictEqual(context, {'question': None,
                                        'history_questions': None,
                                        'previous_answer': None})
@@ -20,7 +20,8 @@ class TestFeatureManager(TestCase):
         feature_manager = FeatureManager(None)
         mock_question = Mock()
         mock_question.has_pronoun.return_value = False
-        features = feature_manager.features(mock_question, feature_names)
+        features = feature_manager.features(mock_question, feature_names,
+                                            None, )
         mock_question.has_pronoun.assert_called()
         self.assertTrue(len(features) == 1)
         self.assertFalse(features[0])
@@ -119,7 +120,7 @@ class TestFeatureManager(TestCase):
         context = {'question': None,
                    'history_questions': [mock_history_question],
                    'previous_answer': None}
-        result = FeatureManager.build_word_pool(context)
+        result = FeatureManager._build_word_pool(context)
         self.assertDictEqual(result, {'hi': 0, 'all': 0})
 
     def test_word_recurrence_rate(self):

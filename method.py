@@ -597,18 +597,19 @@ class AbstractMethod(object):
         self.feature_manager = feature_manager
         self.feature_names = feature_names
 
-    def is_follow_up(self, sentence, history_sentences):
-        """Predict whether the question is follow-up.
+    def is_follow_up(self, sentence, history_sentences, special=None):
+        """Predict whether the sentence is follow-up.
 
         :param sentence: AnalyzedSentence
         :param history_sentences: list[AnalyzedSentence]
-        :param previous_answer: AnalyzedSentence
+        :param special: AnalyzedSentence
         :return: bool
         """
         pass
 
-    def features(self, sentence, history_sentences):
-        return self.feature_manager.features(sentence, history_sentences, self.feature_names)
+    def features(self, sentence, history_sentences, special):
+        return self.feature_manager.features(sentence, history_sentences, None,
+                                             special)
 
 
 class DeBoni(AbstractMethod):
@@ -626,9 +627,9 @@ class DeBoni(AbstractMethod):
         self.q_q_threshold = q_q_threshold
         self.q_a_threshold = q_a_threshold
 
-    def is_follow_up(self, sentence, history_sentences):
+    def is_follow_up(self, sentence, history_sentences, special=None):
         follow_up = False
-        features = self.features(sentence, history_sentences, self.feature_names)
+        features = self.features(sentence, history_sentences, None)
         if features and len(features) == 5 and (
                 features[0] or
                 features[1] or
@@ -703,8 +704,8 @@ class FanYang(AbstractMethod):
             fit(features, labels)
         logger.info('finished training')
 
-    def is_follow_up(self, sentence, history_sentences):
-        features = self.features(sentence, history_sentences)
+    def is_follow_up(self, sentence, history_sentences, special=None):
+        features = self.features(sentence, history_sentences, None)
         if not self.classifier:
             if self.classifier_filename and os.path.isfile(
                     self.classifier_filename):
@@ -713,7 +714,7 @@ class FanYang(AbstractMethod):
                 self.train()
         predictions = self.classifier.predict([features])
         follow_up = bool(predictions[0])
-        logger.info('follow_up: %s, question: %s', follow_up, sentence.md5)
+        logger.info('follow_up: %s, sentence: %s', follow_up, sentence.md5)
         return follow_up
 
 
@@ -725,20 +726,39 @@ class ImprovedMethod(FanYang):
         'sbv_and_vob',
         'same_named_entity',
         'word_recurrence_rate',
-        'adjacent_question_length_difference',
+        'adjacent_sentence_length_difference',
         'largest_similarity']
 
 
-def build_context(sentence, history_sentences):
-    """Return a question context including question, history.
+def build_context(sentence, history_sentences, special):
+    """Return a sentence context including sentence, history.
 
     :param sentence: AnalyzedSentence
     :param history_sentences: list[AnalyzedSentence]
+    :param special: AnalyzedSentence
     :return: dict
     """
     context = {'sentence': sentence,
-               'history_sentences': history_sentences}
+               'history_sentences': history_sentences,
+               'special': special}
     return context
+
+
+def length_difference(a, b):
+        """Return length difference between a and b.
+
+        :param a: AnalyzedSentence
+        :param b: AnalyzedSentence
+        :return: int
+        """
+        a_valid = isinstance(a, AnalyzedSentence)
+        b_valid = isinstance(b, AnalyzedSentence)
+        a_count = a.word_count()
+        b_count = b.word_count()
+        if a_valid:
+            return a_count - b_count if b_valid else a_count
+        else:
+            return 0 - b_count if b_valid else 0
 
 
 class FeatureManager(object):
@@ -754,22 +774,21 @@ class FeatureManager(object):
             'sbv_and_vob': self.has_sbv_and_vob,
             'same_named_entity': self.has_same_named_entity,
             'largest_similarity': self.largest_similarity,
-            'qa_similarity': self.qa_similarity,
-            'largest_question_similarity': self.largest_question_similarity,
             'word_recurrence_rate': self.word_recurrence_rate,
-            'adjacent_question_length_difference':
-                self.adjacent_question_length_difference}
+            'adjacent_sentence_length_difference': self.adjacent_sentence_length_difference
+        }
 
-    def features(self, sentence, history_sentences, feature_names):
+    def features(self, sentence, history_sentences, special, feature_names):
         """Return named features of sentence.
 
         :param sentence: AnalyzedSentence
         :param history_sentences: List[AnalyzedSentence]
+        :param special: AnalyzedSentence
         :param feature_names: list[unicode]
         :return: list[bool | float]
         """
         features = []
-        context = build_context(sentence, history_sentences)
+        context = build_context(sentence, history_sentences, special)
         for feature_name in feature_names:
             feature_method = self.feature_name_method_map[feature_name]
             feature = feature_method(context)
@@ -779,114 +798,79 @@ class FeatureManager(object):
 
     @staticmethod
     def has_pronoun(context):
-        return context['question'].has_pronoun()
+        return context['sentence'].has_pronoun()
 
     @staticmethod
     def has_cue_word(context):
-        return context['question'].has_cue_word()
+        return context['sentence'].has_cue_word()
 
     @staticmethod
     def has_proper_noun(context):
-        return context['question'].has_proper_noun()
+        return context['sentence'].has_proper_noun()
 
     @staticmethod
     def has_noun(context):
-        return context['question'].has_noun()
+        return context['sentence'].has_noun()
 
     @staticmethod
     def has_verb(context):
-        return context['question'].has_verb()
+        return context['sentence'].has_verb()
+
+    @staticmethod
+    def has_sbv_and_vob(context):
+        """Determine whether sentence has subject-verb and verb-object structure.
+
+        :param context: dict
+        :return: bool
+        """
+        sentence = context['sentence']
+        result = sentence.has_sbv() and sentence.has_vob()
+        return result
 
     @staticmethod
     def has_same_named_entity(context):
-        """Determine whether question and its context share same named entity.
+        """Determine whether sentence and its context share same named entity.
 
         :param context: dict
         :return: bool
         """
         entities = {}
-        question = context['question']
-        history_questions = context['history_questions']
-        previous_answer = context['previous_answer']
-        for w in question.named_entities():
+        sentence = context['sentence']
+        history_sentences = context['history_sentences']
+        for w in sentence.named_entities():
             entities[w['cont']] = 1
-        if not history_questions:
+        if not history_sentences:
             return False
-        for history_question in history_questions:
-            for w in history_question.named_entities():
+        for history_sentence in history_sentences:
+            for w in history_sentence.named_entities():
                 if w['cont'] in entities:
                     logger.debug('%s', w['cont'])
                     return True
-        if not previous_answer:
-            return False
-        for w in previous_answer.named_entities():
-            if w['cont'] in entities:
-                return True
         return False
 
-    @staticmethod
-    def has_sbv_and_vob(context):
-        """Determine whether question has subject-verb and verb-object structure.
-
-        :param context: dict
-        :return: bool
-        """
-        question = context['question']
-        result = question.has_sbv() and question.has_vob()
-        return result
-
-    def largest_question_similarity(self, context):
-        """Return largest similarity between question and history questions.
-
-        :param context: dict
-        :return: float
-        """
-        question = context['question']
-        history_questions = context['history_questions']
-        return self.sentence_similarity_calculator.max(question,
-                                                       history_questions)
-
-    def qa_similarity(self, context):
-        """Return similarity between question and previous answer.
-
-        :param context: dict
-        :return: float
-        """
-        question = context['question']
-        previous_answer = context['previous_answer']
-        return self.sentence_similarity_calculator.calculate(question,
-                                                             previous_answer)
-
     def largest_similarity(self, context):
-        """Return max similarity between question and context.
+        """Return max similarity between sentence and context.
 
         :param context: dict
         :return: float
         """
-        question = context['question']
-        history_questions = context['history_questions']
-        previous_answer = context['previous_answer']
-        sentences = []
-        if history_questions:
-            for i in history_questions:
-                sentences.append(i)
-            if previous_answer:
-                sentences.append(previous_answer)
-        return self.sentence_similarity_calculator.max(question, sentences)
+        sentence = context['sentence']
+        history_sentences = context['history_sentences']
+        return self.sentence_similarity_calculator.max(sentence, history_sentences)
 
     def word_recurrence_rate(self, context):
-        """Return rate that words of context recur in current question.
+        """Return rate that words of context recur in current sentence.
 
         :param context: dict
         :return: float
         """
-        question = context['question']
-        word_pool = self.build_word_pool(context)
+        sentence = context['sentence']
+        word_pool = build_word_pool(context['history_sentences'])
         if not word_pool:
             return 0.0
         length = 0
         recurrence = 0
-        for w in question.words_exclude_stop():
+        for w in sentence.words_exclude_stop():
             length += 1
             if w['cont'] in word_pool:
                 recurrence += 1
@@ -897,39 +881,33 @@ class FeatureManager(object):
             return 0.0
 
     @staticmethod
-    def adjacent_question_length_difference(context):
-        """Return length difference between previous question and current question.
+    def adjacent_sentence_length_difference(context):
+        """Return length difference between previous sentence and current sentence.
 
         :param context: dict
-        :return: float
+        :return: int
         """
-        question = context['question']
-        history_questions = context['history_questions']
-        if not history_questions:
-            return 0 - question.word_count()
-        adjacent_question = history_questions[-1]
-        length_difference = adjacent_question.word_count() - \
-                            question.word_count()
-        return length_difference
+        sentence = context['sentence']
+        history_sentences = context['history_sentences']
+        special = context['special']
+        if special:
+            return length_difference(special, sentence)
+        if history_sentences:
+            return length_difference(history_sentences[-1], sentence)
+        return length_difference(sentence, None)
 
-    @staticmethod
-    def build_word_pool(context):
-        """Return a pool containing words of context.
 
-        :param context: dict
+def build_word_pool(sentences):
+        """Return a pool containing words of sentences.
+
+        :param sentences: list[AnalyzedSentence]
         :return: dict
         """
         pool = {}
-        history_questions = context['history_questions']
-        previous_answer = context['previous_answer']
-        if history_questions:
-            for i in history_questions:
+        if sentences:
+            for i in sentences:
                 for w in i.words_exclude_stop():
                     if w['cont'] not in pool:
-                        pool[w['cont']] = 0
-        if previous_answer:
-            for w in previous_answer.words_exclude_stop():
-                if w['cont'] not in pool:
                         pool[w['cont']] = 0
         return pool
 
@@ -1048,6 +1026,6 @@ def configure(dict_config):
         }
         configure(method_config)
         method_ = get_method('fan_yang')
-        method_.is_follow_up(question, history_questions, previous_answer)
+        method_.is_follow_up(sentence, history_sentences, previous_answer)
     """
     Configurator(dict_config).configure()

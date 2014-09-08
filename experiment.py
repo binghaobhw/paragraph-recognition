@@ -277,7 +277,7 @@ def generate_train_data(method_, text_filename, label_filename,
             question = get_analyzed_result(question_text)
             previous_answer = get_analyzed_result(previous_answer_text) if \
                 last_is_answer else None
-            features = method_.features(question, )
+            features = method_.features(question, None, None, )
             train_data_line = to_literal(features + [label])
             train_data_line = ','.join(train_data_line)
             train_data_file.write('{}\n'.format(train_data_line))
