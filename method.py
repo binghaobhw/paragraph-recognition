@@ -592,10 +592,10 @@ class WordEmbeddingCalculator(WordSimilarityCalculator):
 
 
 class AbstractMethod(object):
+    feature_names = []
 
-    def __init__(self, feature_manager, feature_names):
+    def __init__(self, feature_manager):
         self.feature_manager = feature_manager
-        self.feature_names = feature_names
 
     def is_follow_up(self, sentence, history_sentences, special=None):
         """Predict whether the sentence is follow-up.
@@ -608,34 +608,31 @@ class AbstractMethod(object):
         pass
 
     def features(self, sentence, history_sentences, special):
-        return self.feature_manager.features(sentence, history_sentences, None,
-                                             special)
+        return self.feature_manager.features(sentence, history_sentences, special,
+                                             self.feature_names)
 
 
 class DeBoni(AbstractMethod):
 
-    def __init__(self, feature_manager, q_q_threshold,
-                 q_a_threshold):
-        feature_names = [
-            'pronoun',
-            'cue_word',
-            'verb',
-            'largest_question_similarity',
-            'qa_similarity'
-        ]
-        super(DeBoni, self).__init__(feature_manager, feature_names)
-        self.q_q_threshold = q_q_threshold
-        self.q_a_threshold = q_a_threshold
+    feature_names = [
+        'pronoun',
+        'cue_word',
+        'verb',
+        'largest_question_similarity'
+    ]
+
+    def __init__(self, feature_manager, threshold):
+        super(DeBoni, self).__init__(feature_manager)
+        self.threshold = threshold
 
     def is_follow_up(self, sentence, history_sentences, special=None):
         follow_up = False
-        features = self.features(sentence, history_sentences, None)
+        features = self.features(sentence, history_sentences, special)
         if features and len(features) == 5 and (
                 features[0] or
                 features[1] or
                 not features[2] or
-                features[3] > self.q_q_threshold or
-                features[4] > self.q_a_threshold):
+                features[3] > self.threshold):
             follow_up = True
         return follow_up
 
@@ -662,10 +659,10 @@ class FanYang(AbstractMethod):
         'proper_noun',
         'noun',
         'verb',
-        'largest_question_similarity']
+        'largest_question_similarity'
+    ]
 
-    def __init__(self, feature_manager, train_data_filename,
-                 classifier_filename=None):
+    def __init__(self, feature_manager, train_data_filename, classifier_filename):
         super(FanYang, self).__init__(feature_manager)
         self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
@@ -700,18 +697,20 @@ class FanYang(AbstractMethod):
                 features.append(fields[:-1])
                 labels.append(fields[-1])
         self.classifier = tree.DecisionTreeClassifier(
-            max_depth=max_depth, min_samples_leaf=min_samples_leaf).\
+            max_depth=max_depth, min_samples_leaf=min_samples_leaf). \
             fit(features, labels)
         logger.info('finished training')
 
     def is_follow_up(self, sentence, history_sentences, special=None):
-        features = self.features(sentence, history_sentences, None)
+        features = self.features(sentence, history_sentences, special)
         if not self.classifier:
             if self.classifier_filename and os.path.isfile(
                     self.classifier_filename):
                 self.load_classifier()
             elif os.path.isfile(self.train_data_filename):
                 self.train()
+            else:
+                raise RuntimeError('Classifier not found')
         predictions = self.classifier.predict([features])
         follow_up = bool(predictions[0])
         logger.info('follow_up: %s, sentence: %s', follow_up, sentence.md5)
@@ -727,7 +726,8 @@ class ImprovedMethod(FanYang):
         'same_named_entity',
         'word_recurrence_rate',
         'adjacent_sentence_length_difference',
-        'largest_similarity']
+        'largest_similarity'
+    ]
 
 
 def build_context(sentence, history_sentences, special):

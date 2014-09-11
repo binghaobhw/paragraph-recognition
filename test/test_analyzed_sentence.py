@@ -2,7 +2,9 @@
 # coding: utf-8
 import json
 from unittest import TestCase
+
 from mock import Mock
+
 from method import AnalyzedSentence, configure
 
 
@@ -44,7 +46,7 @@ class TestAnalyzedSentence(TestCase):
                 'de_boni': {
                     'class': 'DeBoni',
                     'feature_manager': 'fm',
-                    'q_q_threshold': 0.89,
+                    'threshold': 0.89,
                     'q_a_threshold': 0.89
                 }
             }

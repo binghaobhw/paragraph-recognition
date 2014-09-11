@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from data_access import (Session,
                          Question,
                          Paragraph,
-                         Reply)
+                         Sentence)
 from unicode_csv import (to_unicode,
                          read_csv,
                          write_csv)
@@ -346,18 +346,18 @@ class ParagraphExtractor(Extractor):
                     logger.error('can not find aContent, structure changed')
                     break
                 reply = to_unicode(a_content.strings)
-                paragraph.replies.append(Reply(1, reply))
+                paragraph.sentences.append(Sentence(1, reply))
                 for pre in line_content_div.find_all('pre'):
                     pre_accuse = pre.get('accuse', 'no')
                     if pre_accuse == 'aRA':
                         reply = to_unicode(pre.strings)
-                        paragraph.replies.append(Reply(1, reply))
+                        paragraph.sentences.append(Sentence(1, reply))
                     elif pre_accuse == 'qRA':
                         reply = to_unicode(pre.strings)
-                        paragraph.replies.append(Reply(0, reply))
+                        paragraph.sentences.append(Sentence(0, reply))
                 Session.add(paragraph)
-                logger.info('start to insert paragraph(%d replies)',
-                            len(paragraph.replies))
+                logger.info('start to insert paragraph(%d sentences)',
+                            len(paragraph.sentences))
                 try:
                     Session.commit()
                 except:

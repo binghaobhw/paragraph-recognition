@@ -10,10 +10,9 @@ import os
 import random
 import re
 
-import requests
-
-from data_access import Session, LtpResult, FilteredParagraph, Paragraph
+from data_access import Session, LtpResult, Paragraph
 from log_config import LOG_PROJECT_NAME, LOGGING
+from ltp import analyze
 from method import AnalyzedSentence
 import method
 
@@ -21,80 +20,42 @@ import method
 logger = logging.getLogger(LOG_PROJECT_NAME + '.experiment')
 logger.addHandler(logging.NullHandler())
 
-LTP_URL = 'http://api.ltp-cloud.com/analysis'
-API_KEY = 'u1Q1k8U6tglHca7ZZJ6qTBaq2k0QYwyXNqyE3kVu'
-FORMAT = 'json'
-PATTERN = 'all'
-param = {'api_key': API_KEY,
-         'format': FORMAT,
-         'pattern': PATTERN,
-         'text': None}
-
-PUNCTUATION_TABLE = [u' ', u'.', u'。', u',', u'，', u'!', u'！', u';', u'；',
-                     u'﹖', u'?', u'？', u'～', u'~']
-
-
-def build_param(text):
-    param['text'] = text
-    return param
-
 
 def md5(text):
     data = text.encode('utf-8') if isinstance(text, unicode) else text
     return hashlib.md5(data).hexdigest()
 
 
-def truncate(text):
-    for punctuation in PUNCTUATION_TABLE:
-        index = text.find(punctuation)
-        if 0 < index < 50:
-            return text[:index]
-    return text[:50]
-
-
-def analyze(text):
-    logger.info('try to invoke ltp api, %s', text)
-    response = requests.get(LTP_URL, params=build_param(text), timeout=60)
-    if (response.status_code == 400 and
-                response.json()['error_message'] == 'SENTENCE TOO LONG') or \
-            (response.ok and response.text.startswith('<html')):
-        logger.info('sentence too long, truncate')
-        truncated_text = truncate(text)
-        response = requests.get(LTP_URL,
-                                params=build_param(truncated_text),
-                                timeout=60)
-    if response.ok:
-        return response.json()
-    else:
-        raise RuntimeError('bad response code={} url={} text={}'.format(
-            response.status_code, response.url, response.text))
-
-
 def save_analyzed_result(md5_string, result_json):
     ltp_result = LtpResult(md5_string,
                            json.dumps(result_json, ensure_ascii=False))
     Session.add(ltp_result)
-    logger.info('start to insert ltp result, md5=%s', md5_string)
+    logger.debug('start to insert ltp result, md5=%s', md5_string)
     try:
         Session.commit()
     except Exception:
         Session.rollback()
         logger.error('fail to insert', exc_info=True)
-    logger.info('finished inserting ltp result')
+    logger.debug('finished inserting ltp result')
 
 
-def get_analyzed_result(question_text):
-    if question_text is None:
+def get_analyzed_result(sentence_text):
+    """Fetch analyzed result from db first, if not exist, invoke ltp service.
+
+    :param sentence_text: unicode
+    :return: AnalyzedSentence :raise RuntimeError:
+    """
+    if sentence_text is None:
         return None
-    md5_string = md5(question_text)
+    md5_string = md5(sentence_text)
     ltp_result = Session.query(LtpResult).filter_by(md5=md5_string).first()
     if ltp_result is not None:
         analyzed_result = AnalyzedSentence(md5_string, ltp_result.json_text)
     else:
         try:
-            result_json = analyze(question_text)
+            result_json = analyze(sentence_text)
         except RuntimeError:
-            logger.error('fail to invoke ltp api, text=%s', question_text,
+            logger.error('fail to invoke ltp api, text=%s', sentence_text,
                          exc_info=True)
             raise RuntimeError()
 
@@ -402,7 +363,7 @@ def k_fold_cross(k, num, method_name, unique_word, window_size=3):
     :param unique_word: str
     :return: dict
     """
-    file_names = k_fold_cross_dataset(k, num)
+    file_names = k_fold_cross_data(k, num)
     method_ = method.methods[method_name]
     file_pattern = 'data/{k}-fold-cross-{unique_word}-{{type}}-{{i}}.txt'.\
         format(k=k, unique_word=unique_word)
@@ -435,11 +396,11 @@ def k_fold_cross(k, num, method_name, unique_word, window_size=3):
     return whole_result
 
 
-def k_fold_cross_dataset(k, num):
-    """Generate k-fold cross test set and train set.
+def k_fold_cross_data(k, paragraphs):
+    """Generate k-fold cross test data and train data.
 
     Example:
-        In: k_fold_cross_dataset(2, 10)
+        In: k_fold_cross_data_db(2, 10)
         Out:
             [
                 {
@@ -457,10 +418,10 @@ def k_fold_cross_dataset(k, num):
             ]
 
     :param k: int
-    :param num: int
+    :param paragraphs: int
     :return: list :raise RuntimeError:
     """
-    prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=num) 
+    prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=paragraphs)
     file_pattern = '{prefix}-{{type}}-{{{{i}}}}.txt'.format(prefix=prefix)
     test_text_file_pattern = file_pattern.format(type='test-text')
     test_label_file_pattern = file_pattern.format(type='test-label')
@@ -484,13 +445,13 @@ def k_fold_cross_dataset(k, num):
                 exist = False
                 break
     if not exist:
-        filtered_paragraphs = Session.query(FilteredParagraph).limit(num).all()
-        if len(filtered_paragraphs) != num:
+        paragraphs = Session.query(Paragraph).limit(paragraphs).all()
+        if len(paragraphs) != paragraphs:
             raise RuntimeError()
-        random.shuffle(filtered_paragraphs)
+        random.shuffle(paragraphs)
         folds = [[] for i in range(0, k)]
-        for i in range(0, num):
-            folds[i % k].append(filtered_paragraphs[i].paragraph)
+        for i in range(0, paragraphs):
+            folds[i % k].append(paragraphs[i])
         for i in range(0, k):
             test_text_file = file_names[i]['test_text']
             test_label_file = file_names[i]['test_label']
@@ -508,10 +469,10 @@ def k_fold_cross_dataset(k, num):
     return file_names            
 
 
-def generate_text_label(paragraphs, data_file, label_file):
-    """Generate dataset and label.
+def generate_text_label(paragraphs, text_filename, label_filename):
+    """Generate text and label.
 
-    dataset format:
+    text format:
         Q1:question1
         A1:answer1
         Q2:question2
@@ -519,43 +480,57 @@ def generate_text_label(paragraphs, data_file, label_file):
         Q3:question3
         A2:answer2
 
-    label format: 0: new 1: follow-up
-        Q1:0
-        Q2:1
-        Q3:0
+        or
+
+        S1:sentence1
+        S2:sentence2
+        S3:sentence3
+
+        S4:sentence4
+        S5:sentence5
+
+    label format:
+        Q1:N
+        Q2:F
+        Q3:N
+
+        or
+
+        S1:N
+        S2:F
+        S3:F
+        S4:N
+        S5:F
 
     :param paragraphs: list[Paragraph]
-    :param data_file: str
-    :param label_file: str
+    :param text_filename: str
+    :param label_filename: str
     """
-    result_pattern = u'{}{}:{}\n'
-    question_num = 1
-    answer_num = 1
-    with codecs.open(data_file, encoding='utf-8', mode='wb') as \
-            data, codecs.open(label_file, encoding='utf-8', mode='wb') as label:
+    result_pattern = u'{}:{}\n'
+    type_name = {'0': 'Q',
+                 '1': 'A',
+                 '2': 'S'}
+    num = {'0': 0,
+           '1': 0,
+           '2': 0}
+    label_lines = []
+    text_lines = []
+    with codecs.open(text_filename, encoding='utf-8', mode='wb') as \
+            text_file, codecs.open(label_filename, encoding='utf-8', mode='wb') as label_filename:
         for paragraph in paragraphs:
-            paragraph_lines = [result_pattern.format(
-                'Q', question_num,  paragraph.question.title)]
-            label_lines = [result_pattern.format('Q', question_num, 0)]
-            question_num += 1
-            for reply in paragraph.replies:
-                if reply.is_deleted == 1:
-                    continue
-                if reply.is_question():
-                    test_line = result_pattern.format('Q',  question_num,
-                                                      reply.content)
-                    label_line = result_pattern.format('Q',
-                                                       question_num, 1)
+            label = 'N'
+            for sentence in paragraph.sentences:
+                prefix = type_name[sentence.type] + num[sentence.type]
+                num[sentence.type] += 1
+                text_line = result_pattern.format(prefix, sentence.content)
+                text_lines.append(text_line)
+                if sentence.type != 1:
+                    label_line = result_pattern.format(prefix, label)
+                    label = 'F'
                     label_lines.append(label_line)
-                    question_num += 1
-                else:
-                    test_line = result_pattern.format('A', answer_num,
-                                                      reply.content)
-                    answer_num += 1
-                paragraph_lines.append(test_line)
-            paragraph_lines.append('\n')
-            data.writelines(paragraph_lines)
-            label.writelines(label_lines)
+            text_lines.append('\n')
+            text_file.writelines(text_lines)
+            label_filename.writelines(label_lines)
 
 
 method_config = {
@@ -595,7 +570,7 @@ method_config = {
         'de_boni': {
             'class': 'DeBoni',
             'feature_manager': 'fm',
-            'q_q_threshold': 0.89,
+            'threshold': 0.89,
             'q_a_threshold': 0.89
         },
         'fan_yang': {
@@ -621,22 +596,4 @@ class KCrossDataProvider(object):
         pass
 
 
-class DbKCrossDataProvider(KCrossDataProvider):
-
-    def __init__(self, num):
-        self.num = num
-
-    def generate(self, k):
-        file_pattern = 'data/{k}-fold-cross-data-{{i}}.txt'.format(k=k)
-        paragraphs = Session.query(Paragraph).limit(self.num).all()
-        if len(paragraphs) != self.num:
-            raise RuntimeError()
-        random.shuffle(paragraphs)
-        folds = [[] for i in range(0, k)]
-        for i in range(0, self.num):
-            folds[i % k].append(paragraphs[i])
-        for i in range(0, k):
-            filename = file_pattern.format(i=i)
-            with codecs.open(filename, encoding='utf-8', mode='wb') as f:
-                pass
 

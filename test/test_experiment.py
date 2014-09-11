@@ -5,10 +5,11 @@ import codecs
 from glob import glob
 import os
 import unittest
+
 from mock import Mock
+
 import experiment
 import method
-import random
 
 
 class TestDatasetGenerator(unittest.TestCase):
@@ -102,7 +103,7 @@ class TestAnalyzeFeature(unittest.TestCase):
 class TestKFoldCrossDataset(unittest.TestCase):
     def test_k_fold_cross_dataset(self):
         method.configure(experiment.method_config)
-        result = experiment.k_fold_cross_dataset(2, 10)
+        result = experiment.k_fold_cross_data(2, 10)
         self.assertEqual(len(result), 2)
         for i in result:
             for f in i.itervalues():
@@ -110,9 +111,9 @@ class TestKFoldCrossDataset(unittest.TestCase):
 
     def test_k_fold_cross_dataset_exist(self):
         method.configure(experiment.method_config)
-        result = experiment.k_fold_cross_dataset(2, 10)
+        result = experiment.k_fold_cross_data(2, 10)
         self.assertEqual(len(result), 2)
-        result = experiment.k_fold_cross_dataset(2, 10)
+        result = experiment.k_fold_cross_data(2, 10)
         for i in result:
             for f in i.itervalues():
                 os.remove(f)

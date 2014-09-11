@@ -60,22 +60,22 @@ class Paragraph(Base):
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
 
-    replies = relationship('Reply', order_by='Reply.id')
+    sentences = relationship('Sentence', order_by='Sentence.id')
     question = relationship('Question')
 
     def __init__(self, question_id):
         self.question_id = question_id
 
     def __repr__(self):
-        return "<Paragraph(id='%s', question_id='%s', reply='%s')>" \
-               % (self.id, self.question_id, self.replies)
+        return "<Paragraph(id='%s', question_id='%s', sentences='%s')>" \
+               % (self.id, self.question_id, self.sentences)
 
     def __str__(self):
         return self.__repr__()
 
 
-class Reply(Base):
-    __tablename__ = 'reply'
+class Sentence(Base):
+    __tablename__ = 'sentence'
 
     id = Column(BIGINT(unsigned=True), primary_key=True)
     paragraph_id = Column(BIGINT(unsigned=True),
@@ -91,7 +91,7 @@ class Reply(Base):
         self.content = content
 
     def __repr__(self):
-        return "<Reply(id='%s', paragraph_id='%s', type='%s', " \
+        return "<Sentence(id='%s', paragraph_id='%s', type='%s', " \
                "content='%s')>" \
                % (self.id, self.paragraph_id, self.type, self.content)
 
