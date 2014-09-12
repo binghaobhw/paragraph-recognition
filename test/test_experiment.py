@@ -84,6 +84,17 @@ class TestKFoldCross(unittest.TestCase):
             os.remove(f)
 
 
+class TestKFoldCrossDataFromText(unittest.TestCase):
+    def test_k_fold_cross_data_from_text(self):
+        filename = 'data/ifly.txt'
+        with codecs.open(filename, mode='wb', encoding='utf-8') as f:
+            lines = [u'你最近怎么样N\n', u'挺好的，你呢F\n', u'一般吧F\n', u'你现在在哪工作?N\n', u'温州F\n']
+            f.writelines(lines)
+        filenames = experiment.k_fold_cross_data_from_text(2, filename)
+        self.assertEqual(len(filenames), 2)
+
+
+
 class TestAnalyzeFeature(unittest.TestCase):
     def test_analyze_feature(self):
         method.configure(experiment.method_config)

@@ -10,7 +10,7 @@ import os
 import random
 import re
 
-from data_access import Session, LtpResult, Paragraph
+from data_access import Session, LtpResult, Paragraph, Sentence
 from log_config import LOG_PROJECT_NAME, LOGGING
 from ltp import analyze
 from method import AnalyzedSentence
@@ -400,7 +400,7 @@ def k_fold_cross_data(k, paragraphs):
     """Generate k-fold cross test data and train data.
 
     Example:
-        In: k_fold_cross_data_db(2, 10)
+        In: k_fold_cross_data(2, paragraphs)
         Out:
             [
                 {
@@ -418,7 +418,7 @@ def k_fold_cross_data(k, paragraphs):
             ]
 
     :param k: int
-    :param paragraphs: int
+    :param paragraphs: list[Paragraph]
     :return: list :raise RuntimeError:
     """
     prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=paragraphs)
@@ -445,9 +445,6 @@ def k_fold_cross_data(k, paragraphs):
                 exist = False
                 break
     if not exist:
-        paragraphs = Session.query(Paragraph).limit(paragraphs).all()
-        if len(paragraphs) != paragraphs:
-            raise RuntimeError()
         random.shuffle(paragraphs)
         folds = [[] for i in range(0, k)]
         for i in range(0, paragraphs):
@@ -467,6 +464,31 @@ def k_fold_cross_data(k, paragraphs):
             # generate train set
             generate_text_label(train_set, train_text_file, train_label_file)
     return file_names            
+
+
+def k_fold_cross_data_from_db(k, num):
+    paragraphs = Session.query(Paragraph).limit(num).all()
+    return k_fold_cross_data(k, paragraphs)
+
+
+def k_fold_cross_data_from_text(k, filename):
+    paragraphs = []
+    with codecs.open(filename, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line == '':
+                continue
+            sentence = Sentence('S', line[:-1])
+            label = line[-1]
+            if label != 'N' and label != 'F':
+                raise RuntimeError()
+            if label == 'N':
+                paragraphs.append(paragraph)
+                paragraph = Paragraph()
+            if not paragraph.sentences:
+                paragraph.sentences = []
+            paragraph.sentences.append(sentence)
+    return k_fold_cross_data(k, paragraphs)
 
 
 def generate_text_label(paragraphs, text_filename, label_filename):
