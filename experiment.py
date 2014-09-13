@@ -330,6 +330,10 @@ def analyze_feature(k, num, method_name, window_size=3):
     return whole_result
 
 
+def k_fold_cross_test(file_names, method_, unique_word, window_size=3):
+    pass
+
+
 def k_fold_cross(k, num, method_name, unique_word, window_size=3):
     """Do k-fold cross test with named method.
 
@@ -421,7 +425,8 @@ def k_fold_cross_data(k, paragraphs):
     :param paragraphs: list[Paragraph]
     :return: list :raise RuntimeError:
     """
-    prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=paragraphs)
+    num = len(paragraphs)
+    prefix = 'data/{k}-fold-cross-{num}'.format(k=k, num=num)
     file_pattern = '{prefix}-{{type}}-{{{{i}}}}.txt'.format(prefix=prefix)
     test_text_file_pattern = file_pattern.format(type='test-text')
     test_label_file_pattern = file_pattern.format(type='test-label')
@@ -447,7 +452,7 @@ def k_fold_cross_data(k, paragraphs):
     if not exist:
         random.shuffle(paragraphs)
         folds = [[] for i in range(0, k)]
-        for i in range(0, paragraphs):
+        for i in range(0, num):
             folds[i % k].append(paragraphs[i])
         for i in range(0, k):
             test_text_file = file_names[i]['test_text']
@@ -474,20 +479,24 @@ def k_fold_cross_data_from_db(k, num):
 def k_fold_cross_data_from_text(k, filename):
     paragraphs = []
     with codecs.open(filename, encoding='utf-8') as f:
+        previous_label = 'N'
         for line in f:
             line = line.strip()
             if line == '':
                 continue
-            sentence = Sentence('S', line[:-1])
+            sentence = Sentence(2, line[:-1])
             label = line[-1]
             if label != 'N' and label != 'F':
                 raise RuntimeError()
             if label == 'N':
-                paragraphs.append(paragraph)
+                if previous_label == 'F':
+                    paragraphs.append(paragraph)
                 paragraph = Paragraph()
             if not paragraph.sentences:
                 paragraph.sentences = []
             paragraph.sentences.append(sentence)
+            previous_label = label
+        paragraphs.append(paragraph)
     return k_fold_cross_data(k, paragraphs)
 
 
@@ -529,12 +538,12 @@ def generate_text_label(paragraphs, text_filename, label_filename):
     :param label_filename: str
     """
     result_pattern = u'{}:{}\n'
-    type_name = {'0': 'Q',
-                 '1': 'A',
-                 '2': 'S'}
-    num = {'0': 0,
-           '1': 0,
-           '2': 0}
+    type_name = {0: 'Q',
+                 1: 'A',
+                 2: 'S'}
+    type_num = {0: 0,
+                1: 0,
+                2: 0}
     label_lines = []
     text_lines = []
     with codecs.open(text_filename, encoding='utf-8', mode='wb') as \
@@ -542,8 +551,8 @@ def generate_text_label(paragraphs, text_filename, label_filename):
         for paragraph in paragraphs:
             label = 'N'
             for sentence in paragraph.sentences:
-                prefix = type_name[sentence.type] + num[sentence.type]
-                num[sentence.type] += 1
+                prefix = '{}{}'.format(type_name[sentence.type], type_num[sentence.type])
+                type_num[sentence.type] += 1
                 text_line = result_pattern.format(prefix, sentence.content)
                 text_lines.append(text_line)
                 if sentence.type != 1:

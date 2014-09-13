@@ -31,13 +31,15 @@ class Question(Base):
     __tablename__ = 'question'
 
     id = Column(BIGINT(unsigned=True), primary_key=True)
-    category_id = Column(INTEGER(unsigned=True))
+    category_id = Column(BIGINT(unsigned=True))
     content = Column(VARCHAR(1000))
+    paragraph_id = Column(BIGINT(unsigned=True), ForeignKey('paragraph.id'))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
+    paragraph = relationship("Paragraph", uselist=False)
 
-    def __init__(self, id_, category_id=None, content=None):
+    def __init__(self, id_, category_id, content):
         self.id = id_
         self.category_id = category_id
         self.content = content
@@ -54,21 +56,15 @@ class Paragraph(Base):
     __tablename__ = 'paragraph'
 
     id = Column(BIGINT(unsigned=True), primary_key=True)
-    question_id = Column(BIGINT(unsigned=True),
-                         ForeignKey('question.id'))
     created_time = Column(DATETIME, default=func.now())
     modified_time = Column(DATETIME, default=func.now())
     is_deleted = Column(TINYINT, default=0)
 
     sentences = relationship('Sentence', order_by='Sentence.id')
-    question = relationship('Question')
-
-    def __init__(self, question_id):
-        self.question_id = question_id
 
     def __repr__(self):
-        return "<Paragraph(id='%s', question_id='%s', sentences='%s')>" \
-               % (self.id, self.question_id, self.sentences)
+        return "<Paragraph(id='%s', sentences='%s')>" \
+               % (self.id, self.sentences)
 
     def __str__(self):
         return self.__repr__()
@@ -122,20 +118,3 @@ class LtpResult(Base):
     def __str__(self):
         return self.__repr__()
 
-
-class FilteredParagraph(Base):
-    __tablename__ = 'filtered_paragraph'
-
-    id = Column(BIGINT(unsigned=True), primary_key=True)
-    paragraph_id = Column(BIGINT(unsigned=True),
-                          ForeignKey('zhidao_paragraph.id'))
-    title = Column(VARCHAR(1000))
-
-    paragraph = relationship('Paragraph')
-
-    def __repr__(self):
-        return "<FilteredParagraph(id='%s', id='%s', title='%s')>" \
-               % (self.id, self.paragraph_id, self.title)
-
-    def __str__(self):
-        return self.__repr__()
