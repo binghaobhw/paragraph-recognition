@@ -59,8 +59,8 @@ class TestTrainData(unittest.TestCase):
                     u'Q4:1\n'
                     u'Q5:0\n'
                     u'Q6:1\n')
-        experiment.generate_train_data(mock_method, dataset_filename, label_filename,
-                   train_set_filename)
+        experiment.generate_train_data(mock_method, dataset_filename,
+                                       label_filename, train_set_filename, 3)
         self.assertTrue(os.path.isfile(dataset_filename))
         self.assertTrue(os.path.isfile(label_filename))
         self.assertTrue(os.path.isfile(train_set_filename))

@@ -70,31 +70,34 @@ def test(method_, test_set_filename, result_filename, window_size):
     :param method_: subclass of AbstractMethod
     :param test_set_filename: str
     :param result_filename: str
+    :param window_size: int
     """
     with codecs.open(test_set_filename, encoding='utf-8') as test_set, \
             codecs.open(result_filename, encoding='utf-8', mode='wb') as \
             result_file:
         logger.info('test %s, window_size=%s', test_set_filename, window_size)
-        history_questions = deque(maxlen=window_size)
-        previous_answer_text = None
+        history_sentences = deque(maxlen=window_size)
         last_is_answer = False
         for line in test_set:
             line = line.strip()
             if line == '':
                 continue
-            if line.startswith('A'):
-                previous_answer_text = line.split(':', 1)[1]
+            [prefix, sentence_text] = line.split(':', 1)
+            if prefix.startswith('A'):
                 last_is_answer = True
+                previous_answer_text = sentence_text
                 continue
-            [prefix, question_text] = line.split(':', 1)
-            question = get_analyzed_result(question_text)
-            previous_answer = get_analyzed_result(previous_answer_text) \
-                if last_is_answer else None
-            last_is_answer = False
+            sentence = get_analyzed_result(sentence_text)
+            if last_is_answer:
+                previous_answer = get_analyzed_result(previous_answer_text)
+                follow_up = method_.is_follow_up(sentence, history_sentences,
+                                                 special=previous_answer)
+                last_is_answer = False
+            else:
+                follow_up = method_.is_follow_up(sentence, history_sentences)
             logger.info('test %s', prefix)
-            follow_up = method_.is_follow_up(question, history_questions)
             result_file.write('{}:{:d}\n'.format(prefix, follow_up))
-            history_questions.append(question)
+            history_sentences.append(sentence)
 
 
 def evaluate(result_filename, label_filename):
@@ -204,21 +207,24 @@ def adjust_threshold(path, q_a_threshold=None, q_q_threshold=None):
 
 
 def generate_train_data(method_, text_filename, label_filename,
-                        train_data_filename):
-    """
+                        train_data_filename, window_size):
+    """Generate train data file.
+        Example:
+        feature1, feature2, label
+        1, 0.723, N
+        0, 0.101, F
 
     :param method_: subclass of AbstractMethod
     :param text_filename: str
     :param label_filename: str
     :param train_data_filename: str
+    :param window_size: int
     """
     with codecs.open(text_filename, encoding='utf-8') as text_file, \
             codecs.open(label_filename, encoding='utf-8') as label_file, \
             codecs.open(train_data_filename, encoding='utf-8', mode='wb') as \
             train_data_file:
-        context_window = 3
-        history_questions = deque(maxlen=context_window)
-        previous_answer_text = None
+        history_sentences = deque(maxlen=window_size)
         last_is_answer = False
         feature_names = method_.feature_names
         head = ','.join(feature_names)
@@ -228,22 +234,24 @@ def generate_train_data(method_, text_filename, label_filename,
             line = line.strip()
             if line == '':
                 continue
-            if line.startswith('A'):
-                previous_answer_text = line.split(':', 1)[1]
+            prefix, sentence_text = line.split(':', 1)
+            if prefix.startswith('A'):
                 last_is_answer = True
+                previous_answer_text = sentence_text
                 continue
+            sentence = get_analyzed_result(sentence_text)
             label = label_file.next().strip().split(':', 1)[1]
-            num, question_text = line.split(':', 1)
-            logger.debug('%s', num)
-            question = get_analyzed_result(question_text)
-            previous_answer = get_analyzed_result(previous_answer_text) if \
-                last_is_answer else None
-            features = method_.features(question, None, None, )
+            if last_is_answer:
+                previous_answer = get_analyzed_result(previous_answer_text)
+                features = method_.features(sentence, history_sentences, previous_answer)
+                last_is_answer = False
+            else:
+                features = method_.features(sentence, history_sentences, None)
+            logger.info('test %s', prefix)
             train_data_line = to_literal(features + [label])
             train_data_line = ','.join(train_data_line)
             train_data_file.write('{}\n'.format(train_data_line))
-            history_questions.append(question)
-            last_is_answer = False
+            history_sentences.append(sentence)
 
 
 def to_literal(x):
@@ -331,7 +339,36 @@ def analyze_feature(k, num, method_name, window_size=3):
 
 
 def k_fold_cross_test(file_names, method_, unique_word, window_size=3):
-    pass
+    k = len(file_names)
+    file_pattern = 'data/{k}-fold-cross-{unique_word}-{{type}}-{{i}}.txt'.\
+        format(k=k, unique_word=unique_word)
+    whole_result = {}
+    for i in range(0, k):
+        test_text_file = file_names[i]['test_text']
+        test_label_file = file_names[i]['test_label']
+        train_text_file = file_names[i]['train_text']
+        train_label_file = file_names[i]['train_label']
+        train_data_file = file_pattern.format(type='train-data', i=i)
+        result_file = file_pattern.format(type='result', i=i)
+        if not isinstance(method_, method.DeBoni):
+            generate_train_data(method_, train_text_file, train_label_file,
+                                train_data_file, 3)
+            method_.train_data_filename = train_data_file
+            method_.classifier = None
+        # test
+        test(method_, test_text_file, result_file, window_size)
+        # evaluate
+        result = evaluate(result_file, test_label_file)
+        whole_result[i] = result
+    whole_result['average'] = {
+        'new': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'follow': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'all': {'P': 0.0}}
+    for k1, v1 in whole_result['average'].iteritems():
+        for k2 in v1:
+            v1[k2] = sum(whole_result[num][k1][k2] for num in
+                         range(0, k)) / k
+    return whole_result
 
 
 def k_fold_cross(k, num, method_name, unique_word, window_size=3):
@@ -381,7 +418,7 @@ def k_fold_cross(k, num, method_name, unique_word, window_size=3):
         result_file = file_pattern.format(type='result', i=i)
         if not isinstance(method_, method.DeBoni):
             generate_train_data(method_, train_text_file, train_label_file,
-                                train_data_file)
+                                train_data_file, 3)
             method_.train_data_filename = train_data_file
             method_.classifier = None
         # test
@@ -620,11 +657,5 @@ method_config = {
 
 def prepare():
     logging.config.dictConfig(LOGGING)
-
-
-class KCrossDataProvider(object):
-    def generate(self, k):
-        pass
-
 
 
