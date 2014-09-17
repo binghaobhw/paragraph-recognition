@@ -521,7 +521,6 @@ def k_fold_cross_data_from_text(k, filename):
             line = line.strip()
             if line == '':
                 continue
-            sentence = Sentence(2, line[:-1])
             label = line[-1]
             if label != 'N' and label != 'F':
                 raise RuntimeError()
@@ -529,6 +528,7 @@ def k_fold_cross_data_from_text(k, filename):
                 if previous_label == 'F':
                     paragraphs.append(paragraph)
                 paragraph = Paragraph()
+            sentence = Sentence(2, line[:-1])
             if not paragraph.sentences:
                 paragraph.sentences = []
             paragraph.sentences.append(sentence)
@@ -638,18 +638,19 @@ method_config = {
         'de_boni': {
             'class': 'DeBoni',
             'feature_manager': 'fm',
-            'threshold': 0.89,
-            'q_a_threshold': 0.89
+            'threshold': 0.89
         },
         'fan_yang': {
             'class': 'FanYang',
             'feature_manager': 'fm',
-            'train_data_filename': 'data/fan-yang-train-set.txt'
+            'train_data_filename': 'data/fan-yang-train-set.txt',
+            'classifier_filename': 'data/fan-yang.classifier'
         },
         'my_method': {
             'class': 'ImprovedMethod',
             'feature_manager': 'fm',
-            'train_data_filename': 'data/my-method-train-set.txt'
+            'train_data_filename': 'data/my-method-train-set.txt',
+            'classifier_filename': 'data/my-method.classifier'
         }
     }
 }

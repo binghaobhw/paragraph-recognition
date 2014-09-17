@@ -90,7 +90,8 @@ class TestKFoldCrossDataFromText(unittest.TestCase):
         with codecs.open(filename, mode='wb', encoding='utf-8') as f:
             lines = [u'你最近怎么样N\n', u'挺好的，你呢F\n', u'一般吧F\n', u'你现在在哪工作?N\n', u'温州F\n']
             f.writelines(lines)
-        filenames = experiment.k_fold_cross_data_from_text(2, filename)
+        # filenames = experiment.k_fold_cross_data_from_text(2, filename)
+        filenames = experiment.k_fold_cross_data_from_text(2, '/kuaipan/graduation/data/paragraphs.txt')
         self.assertEqual(len(filenames), 2)
 
 

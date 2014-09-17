@@ -647,6 +647,8 @@ def field_to_right_type(fields):
     for field in fields:
         if field.isdigit():
             result.append(bool(int(field)))
+        elif field.isalpha():
+            result.append(field)
         else:
             result.append(float(field))
     return result
@@ -753,12 +755,12 @@ def length_difference(a, b):
         """
         a_valid = isinstance(a, AnalyzedSentence)
         b_valid = isinstance(b, AnalyzedSentence)
-        a_count = a.word_count()
-        b_count = b.word_count()
+        a_count = a.word_count() if a_valid else 0
+        b_count = b.word_count() if b_valid else 0
         if a_valid:
-            return a_count - b_count if b_valid else a_count
+            return a_count - b_count
         else:
-            return 0 - b_count if b_valid else 0
+            return 0 - b_count
 
 
 class FeatureManager(object):
