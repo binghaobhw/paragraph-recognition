@@ -664,10 +664,13 @@ class FanYang(AbstractMethod):
         'largest_question_similarity'
     ]
 
-    def __init__(self, feature_manager, train_data_filename, classifier_filename):
+    def __init__(self, feature_manager, train_data_filename,
+                 classifier_filename, max_depth=None, min_samples_leaf=2):
         super(FanYang, self).__init__(feature_manager)
         self.train_data_filename = train_data_filename
         self.classifier_filename = classifier_filename
+        self.max_depth = max_depth
+        self.min_samples_leaf = min_samples_leaf
 
     def __del__(self):
         if self.classifier and self.classifier_filename:
@@ -686,7 +689,7 @@ class FanYang(AbstractMethod):
             cPickle.dump(self.classifier, f, cPickle.HIGHEST_PROTOCOL)
             logger.info('finished save classifier')
 
-    def train(self, max_depth=3, min_samples_leaf=5):
+    def train(self):
         features = []
         labels = []
         logger.info('start to train %s', self.train_data_filename)
@@ -699,7 +702,7 @@ class FanYang(AbstractMethod):
                 features.append(fields[:-1])
                 labels.append(fields[-1])
         self.classifier = tree.DecisionTreeClassifier(
-            max_depth=max_depth, min_samples_leaf=min_samples_leaf). \
+            max_depth=self.max_depth, min_samples_leaf=self.min_samples_leaf). \
             fit(features, labels)
         logger.info('finished training')
 

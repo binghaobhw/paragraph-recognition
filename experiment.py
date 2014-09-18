@@ -96,7 +96,8 @@ def test(method_, test_set_filename, result_filename, window_size):
             else:
                 follow_up = method_.is_follow_up(sentence, history_sentences)
             logger.info('test %s', prefix)
-            result_file.write('{}:{:d}\n'.format(prefix, follow_up))
+            label = 'F' if follow_up else 'N'
+            result_file.write('{}:{}\n'.format(prefix, label))
             history_sentences.append(sentence)
 
 
@@ -110,28 +111,27 @@ def evaluate(result_filename, label_filename):
     with codecs.open(label_filename, encoding='utf-8') as label_file, \
             codecs.open(result_filename, encoding='utf-8') as result_file:
         outcome = {
-            'new': {'new': 0, 'follow': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
-            'follow': {'new': 0, 'follow': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'N': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
+            'F': {'N': 0, 'F': 0, 'P': 0.0, 'R': 0.0, 'F1': 0.0},
             'all': {'true': 0, 'false': 0, 'P': 0.0}}
-        num_meaning = {'1': 'new', '0': 'follow'}
-        new = outcome['new']
-        follow = outcome['follow']
+        new = outcome['N']
+        follow = outcome['F']
         all_ = outcome['all']
         for result_line in result_file:
             result_line = result_line.strip()
             label_line = label_file.next()
             label_line = label_line.strip()
-            result_key = num_meaning[result_line[-1]]
-            label_key = num_meaning[label_line[-1]]
+            result_key = result_line[-1]
+            label_key = label_line[-1]
             outcome[result_key][label_key] += 1
-        new['P'] = ratio(new['new'], new['follow'])
-        new['R'] = ratio(new['new'], follow['new'])
+        new['P'] = ratio(new['N'], new['F'])
+        new['R'] = ratio(new['N'], follow['N'])
         new['F1'] = 2*new['R']*ratio(new['P'], new['R'])
-        follow['P'] = ratio(follow['follow'], follow['new'])
-        follow['R'] = ratio(follow['follow'], new['follow'])
+        follow['P'] = ratio(follow['F'], follow['N'])
+        follow['R'] = ratio(follow['F'], new['F'])
         follow['F1'] = 2*follow['R']*ratio(follow['P'], follow['R'])
-        all_['true'] = new['new'] + follow['follow']
-        all_['false'] = new['follow'] + follow['new']
+        all_['true'] = new['N'] + follow['F']
+        all_['false'] = new['F'] + follow['N']
         all_['P'] = ratio(all_['true'], all_['false'])
     return outcome
 
@@ -361,8 +361,8 @@ def k_fold_cross_test(file_names, method_, unique_word, window_size=3):
         result = evaluate(result_file, test_label_file)
         whole_result[i] = result
     whole_result['average'] = {
-        'new': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
-        'follow': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'N': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
+        'F': {'P': 0.0, 'R': 0.0, 'F1': 0.0},
         'all': {'P': 0.0}}
     for k1, v1 in whole_result['average'].iteritems():
         for k2 in v1:
@@ -581,12 +581,12 @@ def generate_text_label(paragraphs, text_filename, label_filename):
     type_num = {0: 0,
                 1: 0,
                 2: 0}
-    label_lines = []
-    text_lines = []
     with codecs.open(text_filename, encoding='utf-8', mode='wb') as \
-            text_file, codecs.open(label_filename, encoding='utf-8', mode='wb') as label_filename:
+            text_file, codecs.open(label_filename, encoding='utf-8', mode='wb') as label_file:
         for paragraph in paragraphs:
             label = 'N'
+            label_lines = []
+            text_lines = []
             for sentence in paragraph.sentences:
                 prefix = '{}{}'.format(type_name[sentence.type], type_num[sentence.type])
                 type_num[sentence.type] += 1
@@ -598,7 +598,7 @@ def generate_text_label(paragraphs, text_filename, label_filename):
                     label_lines.append(label_line)
             text_lines.append('\n')
             text_file.writelines(text_lines)
-            label_filename.writelines(label_lines)
+            label_file.writelines(label_lines)
 
 
 method_config = {
@@ -644,13 +644,17 @@ method_config = {
             'class': 'FanYang',
             'feature_manager': 'fm',
             'train_data_filename': 'data/fan-yang-train-set.txt',
-            'classifier_filename': 'data/fan-yang.classifier'
+            'classifier_filename': 'data/fan-yang.classifier',
+            'max_depth': None,
+            'min_samples_leaf': 2
         },
         'my_method': {
             'class': 'ImprovedMethod',
             'feature_manager': 'fm',
             'train_data_filename': 'data/my-method-train-set.txt',
-            'classifier_filename': 'data/my-method.classifier'
+            'classifier_filename': 'data/my-method.classifier',
+            'max_depth': None,
+            'min_samples_leaf': 2
         }
     }
 }
