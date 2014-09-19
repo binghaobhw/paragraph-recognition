@@ -634,6 +634,7 @@ class DeBoni(AbstractMethod):
                 not features[2] or
                 features[3] > self.threshold):
             follow_up = True
+        logger.info(features + [follow_up])
         return follow_up
 
 
@@ -718,7 +719,7 @@ class FanYang(AbstractMethod):
                 raise RuntimeError('Classifier not found')
         predictions = self.classifier.predict([features])
         follow_up = bool(predictions[0])
-        logger.info('follow_up: %s, sentence: %s', follow_up, sentence.md5)
+        logger.info(features + [follow_up])
         return follow_up
 
 
